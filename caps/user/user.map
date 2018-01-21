@@ -1,0 +1,161 @@
+Archive member included to satisfy reference by file (symbol)
+
+../capio/libcapio.a(printf.o)
+                              user.o (capprintf)
+../capio/libcapio.a(puts.o)   user.o (capputs)
+../capio/libcapio.a(syscalls.o)
+                              ../capio/libcapio.a(printf.o) (capputchar)
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+                0x0000000000400000                . = 0x400000
+
+.rodata.str1.1  0x0000000000400000       0xbc
+ .rodata.str1.1
+                0x0000000000400000       0xb5 user.o
+ .rodata.str1.1
+                0x00000000004000b5        0x7 ../capio/libcapio.a(printf.o)
+
+.rodata.str1.4  0x00000000004000bc       0x2c
+ .rodata.str1.4
+                0x00000000004000bc       0x2c user.o
+                                         0x2a (size before relaxing)
+
+.eh_frame       0x00000000004000e8      0x3a4
+ .eh_frame      0x00000000004000e8      0x2ac user.o
+ .eh_frame      0x0000000000400394       0xc0 ../capio/libcapio.a(printf.o)
+                                         0xd8 (size before relaxing)
+ .eh_frame      0x0000000000400454       0x38 ../capio/libcapio.a(puts.o)
+                                         0x50 (size before relaxing)
+
+.text           0x0000000000401000     0x1798
+                0x0000000000401000                _text_start = .
+ *(.text)
+ .text          0x0000000000401000      0x347 user.o
+                0x0000000000401000                kputs
+                0x0000000000401034                printbuff
+                0x0000000000401044                makebuff
+                0x0000000000401058                currentticks
+                0x0000000000401068                remainingmemory
+                0x0000000000401078                rtype
+                0x0000000000401098                strcpy
+                0x00000000004010b4                cmain
+ .text          0x0000000000401347        0xb userlib.o
+                0x0000000000401347                entry
+ .text          0x0000000000401352      0x294 ../capio/libcapio.a(printf.o)
+                0x00000000004013f6                capprintf
+ .text          0x00000000004015e6       0x34 ../capio/libcapio.a(puts.o)
+                0x00000000004015e6                capputs
+ .text          0x000000000040161a       0x23 ../capio/libcapio.a(syscalls.o)
+                0x000000000040161a                capputchar
+                0x0000000000401627                capcls
+                0x0000000000401630                capsetAttr
+                0x000000000040163d                _text_end = .
+ *(.rodata)
+ *fill*         0x000000000040163d        0x3 
+ .rodata        0x0000000000401640       0xb0 ../capio/libcapio.a(printf.o)
+ *(.data)
+ .data          0x00000000004016f0        0x0 user.o
+ .data          0x00000000004016f0     0x10a8 userlib.o
+                0x00000000004026f0                dump
+                0x00000000004026f3                kmapPage
+                0x00000000004026fa                printBuffer
+                0x0000000000402701                retype
+                0x0000000000402718                allocBuffer
+                0x0000000000402723                remaining
+                0x000000000040272a                getTicks
+                0x0000000000402731                kputc
+                0x000000000040273c                capmove
+                0x000000000040274b                capclear
+                0x0000000000402752                allocUntyped
+                0x0000000000402761                allocCspace
+                0x000000000040276c                allocPage
+                0x0000000000402777                allocPageTable
+                0x0000000000402782                mapPage
+                0x000000000040278d                mapPageTable
+ .data          0x0000000000402798        0x0 ../capio/libcapio.a(printf.o)
+ .data          0x0000000000402798        0x0 ../capio/libcapio.a(puts.o)
+ .data          0x0000000000402798        0x0 ../capio/libcapio.a(syscalls.o)
+                0x0000000000402798                _start_bss = .
+ *(COMMON)
+ *(.bss)
+ .bss           0x0000000000402798        0x0 user.o
+ .bss           0x0000000000402798        0x0 userlib.o
+ .bss           0x0000000000402798        0x0 ../capio/libcapio.a(printf.o)
+ .bss           0x0000000000402798        0x0 ../capio/libcapio.a(puts.o)
+ .bss           0x0000000000402798        0x0 ../capio/libcapio.a(syscalls.o)
+                0x0000000000402798                _end_bss = .
+LOAD user.o
+LOAD userlib.o
+LOAD ../capio/libcapio.a
+OUTPUT(user elf32-i386)
+
+.debug_info     0x0000000000000000      0x850
+ .debug_info    0x0000000000000000      0x50a user.o
+ .debug_info    0x000000000000050a       0x44 userlib.o
+ .debug_info    0x000000000000054e      0x239 ../capio/libcapio.a(printf.o)
+ .debug_info    0x0000000000000787       0x7f ../capio/libcapio.a(puts.o)
+ .debug_info    0x0000000000000806       0x4a ../capio/libcapio.a(syscalls.o)
+
+.debug_abbrev   0x0000000000000000      0x337
+ .debug_abbrev  0x0000000000000000      0x171 user.o
+ .debug_abbrev  0x0000000000000171       0x12 userlib.o
+ .debug_abbrev  0x0000000000000183      0x124 ../capio/libcapio.a(printf.o)
+ .debug_abbrev  0x00000000000002a7       0x7c ../capio/libcapio.a(puts.o)
+ .debug_abbrev  0x0000000000000323       0x14 ../capio/libcapio.a(syscalls.o)
+
+.debug_loc      0x0000000000000000      0x659
+ .debug_loc     0x0000000000000000      0x151 user.o
+ .debug_loc     0x0000000000000151      0x4e9 ../capio/libcapio.a(printf.o)
+ .debug_loc     0x000000000000063a       0x1f ../capio/libcapio.a(puts.o)
+
+.debug_aranges  0x0000000000000000       0xa8
+ .debug_aranges
+                0x0000000000000000       0x20 user.o
+ .debug_aranges
+                0x0000000000000020       0x28 userlib.o
+ .debug_aranges
+                0x0000000000000048       0x20 ../capio/libcapio.a(printf.o)
+ .debug_aranges
+                0x0000000000000068       0x20 ../capio/libcapio.a(puts.o)
+ .debug_aranges
+                0x0000000000000088       0x20 ../capio/libcapio.a(syscalls.o)
+
+.debug_line     0x0000000000000000      0x2dd
+ .debug_line    0x0000000000000000       0xe0 user.o
+ .debug_line    0x00000000000000e0       0x9a userlib.o
+ .debug_line    0x000000000000017a       0xd6 ../capio/libcapio.a(printf.o)
+ .debug_line    0x0000000000000250       0x45 ../capio/libcapio.a(puts.o)
+ .debug_line    0x0000000000000295       0x48 ../capio/libcapio.a(syscalls.o)
+
+.debug_str      0x0000000000000000      0x255
+ .debug_str     0x0000000000000000      0x1c1 user.o
+                                        0x1e0 (size before relaxing)
+ .debug_str     0x00000000000001c1       0x8d ../capio/libcapio.a(printf.o)
+                                        0x13c (size before relaxing)
+ .debug_str     0x000000000000024e        0x7 ../capio/libcapio.a(puts.o)
+                                         0xd8 (size before relaxing)
+
+.comment        0x0000000000000000       0x2d
+ .comment       0x0000000000000000       0x2d user.o
+                                         0x2e (size before relaxing)
+ .comment       0x000000000000002d       0x2e ../capio/libcapio.a(printf.o)
+ .comment       0x000000000000002d       0x2e ../capio/libcapio.a(puts.o)
+
+.note.GNU-stack
+                0x0000000000000000        0x0
+ .note.GNU-stack
+                0x0000000000000000        0x0 user.o
+ .note.GNU-stack
+                0x0000000000000000        0x0 ../capio/libcapio.a(printf.o)
+ .note.GNU-stack
+                0x0000000000000000        0x0 ../capio/libcapio.a(puts.o)
+
+.debug_ranges   0x0000000000000000       0x50
+ .debug_ranges  0x0000000000000000       0x20 userlib.o
+ .debug_ranges  0x0000000000000020       0x30 ../capio/libcapio.a(printf.o)

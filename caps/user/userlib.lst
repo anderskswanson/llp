@@ -1,0 +1,262 @@
+GAS LISTING userlib.s 			page 1
+
+
+   1              	#--------------------------------------------------------------------------
+   2              	# userlib.s:  User-level initialization and system call stubs.
+   3              	#
+   4              	# Mark P. Jones, Portland State University, May 2016
+   5              	
+   6              	#--------------------------------------------------------------------------
+   7              	# Initialization:
+   8              	#--------------------------------------------------------------------------
+   9              	
+  10              		.text
+  11              		.globl	entry
+  12 0000 8D250010 	entry:	leal	stack, %esp
+  12      0000
+  13 0006 E9FCFFFF 		jmp	cmain
+  13      FF
+  14              	
+  15              		.data
+  16 0000 00000000 		.space	4096		# User stack
+  16      00000000 
+  16      00000000 
+  16      00000000 
+  16      00000000 
+  17              	stack:
+  18              	
+  19              	#--------------------------------------------------------------------------
+  20              	# Request kernel dump of current state (for debugging):
+  21              	#--------------------------------------------------------------------------
+  22              	
+  23              		# System call to request a kernel dump of the invoking
+  24              		# thread's page directory, cspace, and system wide untypeds.
+  25              		.globl	dump
+  26 1000 CD65     	dump:	int	$101
+  27 1002 C3       		ret
+  28              	
+  29              	#--------------------------------------------------------------------------
+  30              	# Request kernel mapping without the use of a capability:
+  31              	#--------------------------------------------------------------------------
+  32              	
+  33              		# System call to request a page of memory to be mapped
+  34              		# at a specific address.
+  35              		#    kmapPage(addr)
+  36              		#    | retn | addr |
+  37              		#    | 0    | 4    |
+  38              		.globl	kmapPage
+  39              	kmapPage:
+  40 1003 8B742404 		movl	4(%esp), %esi
+  41 1007 CD64     		int	$100
+  42 1009 C3       		ret
+  43              	
+  44              	#--------------------------------------------------------------------------
+  45              	# print the IPC buffer: 
+  46              	#--------------------------------------------------------------------------
+  47              		#System call to print the IPC buffer if its exists
+  48              		.globl printBuffer
+  49              	printBuffer:
+  50 100a 8B4C2404 		movl	4(%esp), %ecx
+  51 100e CD9B     		int	$155
+GAS LISTING userlib.s 			page 2
+
+
+  52 1010 C3       		ret
+  53              	
+  54              	#--------------------------------------------------------------------------
+  55              	# Retype memory: 
+  56              	#--------------------------------------------------------------------------
+  57              		#system call to retype existing memory
+  58              		.globl retype
+  59              	retype:
+  60 1011 8B4C2404 		movl	4(%esp), %ecx
+  61 1015 8B442408 		movl	8(%esp), %eax
+  62 1019 8B54240C 		movl	12(%esp), %edx
+  63 101d 8B5C2410 		movl	16(%esp), %ebx
+  64 1021 8B742414 		movl	20(%esp), %esi
+  65 1025 CD9C     		int	$156
+  66 1027 C3       		ret
+  67              	
+  68              	#--------------------------------------------------------------------------
+  69              	# create new IPC buffer: 
+  70              	#--------------------------------------------------------------------------
+  71              		#System call to allocate a new IPC buffer if it exists. 
+  72              		.globl allocBuffer
+  73              	allocBuffer:
+  74 1028 8B4C2404 		movl	4(%esp), %ecx #cap
+  75 102c 8B442408 		movl	8(%esp), %eax #addr
+  76 1030 CD9A     		int	$154
+  77 1032 C3       		ret	
+  78              	#--------------------------------------------------------------------------
+  79              	# remaining unallocated memory:
+  80              	#--------------------------------------------------------------------------
+  81              	        #System call to get the remaining unallocated memory
+  82              		.globl	remaining 
+  83              	remaining:
+  84 1033 8B4C2404 		movl	4(%esp), %ecx
+  85 1037 CD99     		int	$153
+  86 1039 C3       		ret
+  87              	
+  88              	#--------------------------------------------------------------------------
+  89              	# Timer access:
+  90              	#--------------------------------------------------------------------------
+  91              	
+  92              		#System call to get the current tick coutn
+  93              		.globl getTicks
+  94              	getTicks:
+  95 103a 8B4C2404 		movl    4(%esp), %ecx
+  96 103e CD98     		int	$152
+  97 1040 C3       		ret
+  98              		# System call to print a character in the kernel's window
+  99              	#--------------------------------------------------------------------------
+ 100              	# Console access:
+ 101              	#--------------------------------------------------------------------------
+ 102              	
+ 103              		# System call to print a character in the kernel's window
+ 104              		#    kputc(cap, ch)
+ 105              		#    | retn | cap  | ch   |
+ 106              		#    | 0    | 4    | 8    |
+ 107              		.globl	kputc
+ 108 1041 8B4C2404 	kputc:	movl	4(%esp), %ecx
+GAS LISTING userlib.s 			page 3
+
+
+ 109 1045 8B442408 		movl	8(%esp), %eax
+ 110 1049 CD80     		int	$128
+ 111 104b C3       		ret
+ 112              	
+ 113              	#--------------------------------------------------------------------------
+ 114              	# Capability space management:
+ 115              	#--------------------------------------------------------------------------
+ 116              	
+ 117              		# System call to move a capability
+ 118              		#    capmove(src, dst, copy)
+ 119              		#    | retn | src  | dst  | copy |
+ 120              		#    | 0    | 4    | 8    | 12   |
+ 121              		.globl	capmove
+ 122 104c 8B742404 	capmove:movl	4(%esp), %esi
+ 123 1050 8B7C2408 		movl	8(%esp), %edi
+ 124 1054 8B44240C 		movl	12(%esp), %eax
+ 125 1058 CD8C     		int	$140
+ 126 105a C3       		ret
+ 127              	
+ 128              		# System call to clear a capability
+ 129              		#    capclear(src, dst)
+ 130              		#    | retn | src  |
+ 131              		#    | 0    | 4    |
+ 132              		.globl	capclear
+ 133              	capclear:
+ 134 105b 8B742404 		movl	4(%esp), %esi
+ 135 105f CD8D     		int	$141
+ 136 1061 C3       		ret
+ 137              	
+ 138              	#--------------------------------------------------------------------------
+ 139              	# Allocation from untyped memory:
+ 140              	#--------------------------------------------------------------------------
+ 141              	
+ 142              		# System call to allocate a new untyped memory object
+ 143              		#    allocUntyped(ucap, slot, bits)
+ 144              		#    | retn | ucap | slot | bits |
+ 145              		#    |      | ecx  | edi  | eax  |
+ 146              		#    | 0    | 4    | 8    | 12   |
+ 147              		.globl	allocUntyped
+ 148              	allocUntyped:
+ 149 1062 8B4C2404 		movl	4(%esp), %ecx
+ 150 1066 8B7C2408 		movl	8(%esp), %edi
+ 151 106a 8B44240C 		movl	12(%esp), %eax
+ 152 106e CD8E     		int	$142
+ 153 1070 C3       		ret
+ 154              	
+ 155              		# System call to allocate a new cspace object:
+ 156              		#    allocCspace(ucap, slot)
+ 157              		#    | retn | ucap | slot |
+ 158              		#    |      | ecx  | edi  |
+ 159              		#    | 0    | 4    | 8    |
+ 160              		.globl	allocCspace
+ 161              	allocCspace:
+ 162 1071 8B4C2404 		movl	4(%esp), %ecx
+ 163 1075 8B7C2408 		movl	8(%esp), %edi
+ 164 1079 CD8F     		int	$143
+ 165 107b C3       		ret
+GAS LISTING userlib.s 			page 4
+
+
+ 166              	
+ 167              		# System call to allocate a new page object:
+ 168              		#    allocPage(ucap, slot)
+ 169              		#    | retn | ucap | slot |
+ 170              		#    |      | ecx  | edi  |
+ 171              		#    | 0    | 4    | 8    |
+ 172              		.globl	allocPage
+ 173              	allocPage:
+ 174 107c 8B4C2404 		movl	4(%esp), %ecx
+ 175 1080 8B7C2408 		movl	8(%esp), %edi
+ 176 1084 CD90     		int	$144
+ 177 1086 C3       		ret
+ 178              	
+ 179              		# System call to allocate a new page table:
+ 180              		#    allocPageTable(ucap, slot)
+ 181              		#    | retn | ucap | slot |
+ 182              		#    |      | ecx  | edi  |
+ 183              		#    | 0    | 4    | 8    |
+ 184              		.globl	allocPageTable
+ 185              	allocPageTable:
+ 186 1087 8B4C2404 		movl	4(%esp), %ecx
+ 187 108b 8B7C2408 		movl	8(%esp), %edi
+ 188 108f CD91     		int	$145
+ 189 1091 C3       		ret
+ 190              	
+ 191              	#--------------------------------------------------------------------------
+ 192              	# Mapping into the current address space:
+ 193              	#--------------------------------------------------------------------------
+ 194              	
+ 195              		# System call to map a page:
+ 196              		#    mapPageTable(pcap, addr)
+ 197              		#    | retn | pcap | addr |
+ 198              		#    |      | ecx  | eax  |
+ 199              		#    | 0    | 4    | 8    |
+ 200              		.globl	mapPage
+ 201              	mapPage:
+ 202 1092 8B4C2404 		movl	4(%esp), %ecx
+ 203 1096 8B442408 		movl	8(%esp), %eax
+ 204 109a CD96     		int	$150
+ 205 109c C3       		ret
+ 206              	
+ 207              		# System call to allocate a new page table:
+ 208              		#    mapPageTable(ptcap, addr)
+ 209              		#    | retn | ptcap| addr |
+ 210              		#    |      | ecx  | eax  |
+ 211              		#    | 0    | 4    | 8    |
+ 212              		.globl	mapPageTable
+ 213              	mapPageTable:
+ 214 109d 8B4C2404 		movl	4(%esp), %ecx
+ 215 10a1 8B442408 		movl	8(%esp), %eax
+ 216 10a5 CD97     		int	$151
+ 217 10a7 C3       		ret
+ 218              	
+ 219              	#-- Done ---------------------------------------------------------------------
+GAS LISTING userlib.s 			page 5
+
+
+DEFINED SYMBOLS
+           userlib.s:12     .text:0000000000000000 entry
+           userlib.s:17     .data:0000000000001000 stack
+           userlib.s:26     .data:0000000000001000 dump
+           userlib.s:39     .data:0000000000001003 kmapPage
+           userlib.s:49     .data:000000000000100a printBuffer
+           userlib.s:59     .data:0000000000001011 retype
+           userlib.s:73     .data:0000000000001028 allocBuffer
+           userlib.s:83     .data:0000000000001033 remaining
+           userlib.s:94     .data:000000000000103a getTicks
+           userlib.s:108    .data:0000000000001041 kputc
+           userlib.s:122    .data:000000000000104c capmove
+           userlib.s:133    .data:000000000000105b capclear
+           userlib.s:148    .data:0000000000001062 allocUntyped
+           userlib.s:161    .data:0000000000001071 allocCspace
+           userlib.s:173    .data:000000000000107c allocPage
+           userlib.s:185    .data:0000000000001087 allocPageTable
+           userlib.s:201    .data:0000000000001092 mapPage
+           userlib.s:213    .data:000000000000109d mapPageTable
+
+UNDEFINED SYMBOLS
+cmain

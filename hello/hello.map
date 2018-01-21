@@ -1,0 +1,103 @@
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+                0x0000000000100000                . = 0x100000
+
+.rodata.str1.1  0x0000000000100000       0x5c
+ .rodata.str1.1
+                0x0000000000100000       0x5c hello.o
+                                         0x5e (size before relaxing)
+
+.rodata.str1.4  0x000000000010005c       0xb0
+ .rodata.str1.4
+                0x000000000010005c       0xb0 hello.o
+
+.eh_frame       0x000000000010010c      0x174
+ .eh_frame      0x000000000010010c      0x174 hello.o
+
+.text           0x0000000000100280     0x23d0
+                0x0000000000100280                _text_start = .
+ *(.multiboot)
+ .multiboot     0x0000000000100280       0x14 boot.o
+                0x000000000010028c                mbi
+                0x0000000000100290                mbi_magic
+ *(.text)
+ .text          0x0000000000100294       0x1a boot.o
+                0x0000000000100294                entry
+ .text          0x00000000001002ae      0x3c6 hello.o
+                0x00000000001002ae                cls
+                0x00000000001002f9                hexify_digit
+                0x0000000000100315                scroll_up
+                0x000000000010035c                putchar
+                0x0000000000100417                puts
+                0x000000000010043b                outhex
+                0x00000000001004b8                numdigits
+                0x0000000000100531                outint
+                0x0000000000100598                hello
+ .text          0x0000000000100674       0x25 cls.o
+                0x0000000000100674                clear
+                0x0000000000100699                _text_end = .
+                0x0000000000100699                _data_start = .
+ *(.rodata)
+ *(.data)
+ .data          0x0000000000100699     0x1000 boot.o
+ .data          0x0000000000101699        0x0 hello.o
+ *fill*         0x0000000000101699        0x3 
+ .data          0x000000000010169c      0xfac cls.o
+                0x000000000010169c                video
+                0x0000000000102648                _data_end = .
+                0x0000000000102648                _bss_start = .
+ *(COMMON)
+ *(.bss)
+ .bss           0x0000000000102648        0x0 boot.o
+ .bss           0x0000000000102648        0x8 hello.o
+ .bss           0x0000000000102650        0x0 cls.o
+                0x0000000000102650                _bss_end = .
+LOAD boot.o
+LOAD hello.o
+LOAD cls.o
+OUTPUT(hello elf32-i386)
+
+.debug_line     0x0000000000000000      0x1bb
+ .debug_line    0x0000000000000000       0x3c boot.o
+ .debug_line    0x000000000000003c      0x13c hello.o
+ .debug_line    0x0000000000000178       0x43 cls.o
+
+.debug_info     0x0000000000000000      0x408
+ .debug_info    0x0000000000000000       0x41 boot.o
+ .debug_info    0x0000000000000041      0x387 hello.o
+ .debug_info    0x00000000000003c8       0x40 cls.o
+
+.debug_abbrev   0x0000000000000000      0x171
+ .debug_abbrev  0x0000000000000000       0x14 boot.o
+ .debug_abbrev  0x0000000000000014      0x149 hello.o
+ .debug_abbrev  0x000000000000015d       0x14 cls.o
+
+.debug_aranges  0x0000000000000000       0x60
+ .debug_aranges
+                0x0000000000000000       0x20 boot.o
+ .debug_aranges
+                0x0000000000000020       0x20 hello.o
+ .debug_aranges
+                0x0000000000000040       0x20 cls.o
+
+.debug_loc      0x0000000000000000      0x265
+ .debug_loc     0x0000000000000000      0x265 hello.o
+
+.debug_str      0x0000000000000000      0x143
+ .debug_str     0x0000000000000000      0x143 hello.o
+                                        0x14e (size before relaxing)
+
+.comment        0x0000000000000000       0x2d
+ .comment       0x0000000000000000       0x2d hello.o
+                                         0x2e (size before relaxing)
+
+.note.GNU-stack
+                0x0000000000000000        0x0
+ .note.GNU-stack
+                0x0000000000000000        0x0 hello.o

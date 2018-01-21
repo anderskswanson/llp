@@ -1,0 +1,565 @@
+GAS LISTING init.s 			page 1
+
+
+   1              	#--------------------------------------------------------------------------
+   2              	# init.s:  Initialize simple kernel with a GDT
+   3              	#
+   4              	# Mark P. Jones, April 2006, 2016
+   5              	
+   6              	#--------------------------------------------------------------------------
+   7              	# General definitions:
+   8              	#--------------------------------------------------------------------------
+   9              	
+  10              		.set	RESERVED, 0	# Used to mark a reserved field
+  11              	
+  12              	#--------------------------------------------------------------------------
+  13              	# Initial stack:
+  14              	#--------------------------------------------------------------------------
+  15              	
+  16              		.data
+  17 0000 00000000 		.space	4096		# Kernel stack
+  17      00000000 
+  17      00000000 
+  17      00000000 
+  17      00000000 
+  18              	stack:
+  19              	
+  20              	#--------------------------------------------------------------------------
+  21              	# Entry point:
+  22              	#--------------------------------------------------------------------------
+  23              	
+  24              		.text
+  25              		.globl	entry
+  26 0000 FA       	entry:	cli			# Turn off interrupts
+  27 0001 8D250010 		leal	stack, %esp	# Set up initial kernel stack
+  27      0000
+  28              	
+  29 0007 E8080000 		call	initGDT		# Set up global segment table
+  29      00
+  30 000c E8FCFFFF 		call	kernel		# Enter main kernel
+  30      FF
+  31              	
+  32 0011 F4       	1:	hlt			# Catch all, in case kernel returns
+  33 0012 EBFD     		jmp	1b
+  34              	
+  35              	#--------------------------------------------------------------------------
+  36              	# Task-state Segment (TSS):
+  37              	#
+  38              	# We provide only a single Task-State Segment (TSS); we want to support
+  39              	# lighter-weight task switching than is provided by the hardware.  But
+  40              	# we still need a tss to store the kernel stack pointer and segment.
+  41              	#--------------------------------------------------------------------------
+  42              	
+  43              		.data
+  44 1000 00000000 	tss:	.short	0, RESERVED		# previous task link
+  45 1004 00000000 	esp0:	.long	0			# esp0
+  46 1008 00000000 		.short	KERN_DS, RESERVED	# ss0
+  47 100c 00000000 		.long	0			# esp1
+  48 1010 00000000 		.short	0, RESERVED		# ss1
+  49 1014 00000000 		.long	0			# esp2
+  50 1018 00000000 		.short	0, RESERVED		# ss2
+GAS LISTING init.s 			page 2
+
+
+  51 101c 00000000 		.long	0, 0, 0			# cr3 (pdbr), eip, eflags
+  51      00000000 
+  51      00000000 
+  52 1028 00000000 		.long	0, 0, 0, 0, 0		# eax, ecx, edx, ebx, esp
+  52      00000000 
+  52      00000000 
+  52      00000000 
+  52      00000000 
+  53 103c 00000000 		.long	0, 0, 0			# ebp, esi, edi
+  53      00000000 
+  53      00000000 
+  54 1048 00000000 		.short	0, RESERVED		# es
+  55 104c 00000000 		.short	0, RESERVED		# cs
+  56 1050 00000000 		.short	0, RESERVED		# ss
+  57 1054 00000000 		.short	0, RESERVED		# ds
+  58 1058 00000000 		.short	0, RESERVED		# fs
+  59 105c 00000000 		.short	0, RESERVED		# gs
+  60 1060 00000000 		.short	0, RESERVED		# ldt segment selector
+  61 1064 0000     		.short	0			# T bit
+  62              		#
+  63              		# For now, we set the I/O bitmap offset to a value beyond the limit
+  64              		# of the tss; following Intel documentation, this means that there
+  65              		# is no I/O permissions bitmap and all I/O instructions will
+  66              		# generate exceptions when CPL > IOPL.
+  67              		#
+  68 1066 E803     		.short	1000			# I/O bit map base address
+  69              		.set	tss_len, .-tss
+  70              	
+  71              	#--------------------------------------------------------------------------
+  72              	# Initialize gdt:
+  73              	#
+  74              	# There are eight entries in our GDT:
+  75              	#   0  null		; null entry required by Intel architecture
+  76              	#   1  reserved
+  77              	#   2  reserved
+  78              	#   3  tss
+  79              	#   4  kernel code	; kernel segments
+  80              	#   5  kernel data
+  81              	#   6  user code	; user segments
+  82              	#   7  user data
+  83              	# For the purposes of caching, we will start the GDT at a 128 byte aligned
+  84              	# address; older processors have 32 byte cache lines while newer ones have
+  85              	# 128 bytes per cache line.  The inclusion of a reserved entry (1) in the
+  86              	# GDT ensures that the four {kernel,user}{code,data} segments all fit in a
+  87              	# single cache line, even on older machines.  (I got this idea after reading
+  88              	# the O'Reilly book on the Linux Kernel, but I have no idea if it makes
+  89              	# a significant difference in practice ...)
+  90              	#--------------------------------------------------------------------------
+  91              	
+  92              		.set	GDT_ENTRIES, 8
+  93              		.set	GDT_SIZE, 8*GDT_ENTRIES	# 8 bytes for each descriptor
+  94              	
+  95              		.data
+  96 1068 00000000 		.align  128
+  96      00000000 
+  96      00000000 
+  96      00000000 
+GAS LISTING init.s 			page 3
+
+
+  96      00000000 
+  97              	#	.globl	gdt			# retain for debugging
+  98 1080 00000000 	gdt:	.space	GDT_SIZE, 0
+  98      00000000 
+  98      00000000 
+  98      00000000 
+  98      00000000 
+  99              	
+ 100              		.align	8
+ 101 10c0 3F00     	gdtptr:	.short	GDT_SIZE-1
+ 102 10c2 80100000 		.long	gdt
+ 103              	
+ 104              		.set	GDT_DATA,  0x13		# descriptor type for data segment
+ 105              		.set	GDT_CODE,  0x1b		# descriptor type for code segment
+ 106              		.set	GDT_TSS32, 0x09		# descriptor type for 32-bit tss
+ 107              	
+ 108              		.text
+ 109              		.macro	gdtset name, slot, base, limit, gran, dpl, type
+ 110              		#
+ 111              		# This macro calculates a GDT segment descriptor from a specified
+ 112              		# base address (32 bits), limit (20 bits), granularity (1 bit),
+ 113              		# dpl (2 bits) and type (5 bits).  The descriptor is a 64 bit
+ 114              		# quantity that is calculated in the register pair edx:eax and
+ 115              		# also stored in the specified slot of the gdt.  The ebx and ecx
+ 116              		# registers are also overwritten in the process.
+ 117              		#
+ 118              		# The format of a segment descriptor requires us to chop up the
+ 119              		# base and limit values with bit twiddling manipulations that
+ 120              		# cannot, in general, be performed at assembly time.  (The
+ 121              		# base address, in particular, may be a relocatable symbol.)
+ 122              		# The following macro makes it easier for us to perform the
+ 123              		# necessary calculations for each segment at runtime.
+ 124              		#
+ 125              		# gran = 0 => limit is last valid byte offset in segment
+ 126              		# gran = 1 => limit is last valid page offset in segment
+ 127              		#
+ 128              		# type = 0x13 (GDT_DATA)  => data segment
+ 129              		# type = 0x1b (GDT_CODE)  => code segment
+ 130              		# type = 0x09 (GDT_TSS32) => 32 bit tss system descriptor
+ 131              		#
+ 132              		# The following comments use # for concatenation of bitdata
+ 133              		#
+ 134              		.set	\name, (\slot<<3)|\dpl
+ 135              		.globl	\name
+ 136              		movl	$\base, %eax	# eax = bhi # bmd # blo
+ 137              		movl	$\limit, %ebx	# ebx = ~ # lhi # llo
+ 138              	
+ 139              		mov	%eax, %edx	# edx = base
+ 140              		shl	$16, %eax	# eax = blo # 0
+ 141              		mov	%bx, %ax	# eax = blo # llo
+ 142              		movl	%eax, gdt+(8*\slot)
+ 143              	
+ 144              		shr	$16, %edx	# edx = 0 # bhi # bmd
+ 145              		mov	%edx, %ecx	# ecx = 0 # bhi # bmd
+ 146              		andl	$0xff, %ecx	# ecx = 0 # 0   # bmd
+ 147              		xorl	%ecx, %edx	# edx = 0 # bhi # bmd
+ 148              		shl	$16,%edx	# edx = bhi # 0
+GAS LISTING init.s 			page 4
+
+
+ 149              		orl	%ecx, %edx	# edx = bhi # 0 # bmd
+ 150              		andl	$0xf0000, %ebx	# ebx = 0 # lhi # 0
+ 151              		orl	%ebx, %edx	# edx = bhi # 0 # lhi # 0 # bmd
+ 152              		#
+ 153              		# The constant 0x4080 used below is a combination of:
+ 154              		#  0x4000     sets the D/B bit to indicate a 32-bit segment
+ 155              		#  0x0080     sets the P bit to indicate that descriptor is present
+ 156              		# (\gran<<15) puts the granularity bit into place
+ 157              		# (\dpl<<5)   puts the protection level into place
+ 158              		# \type       is the 5 bit type, including the S bit as its MSB
+ 159              		#
+ 160              		orl	$(((\gran<<15) | 0x4080 | (\dpl<<5) | \type)<<8), %edx
+ 161              		movl	%edx, gdt + (4 + 8*\slot)
+ 162              		.endm
+ 163              	
+ 164              	initGDT:# Kernel code segment:
+ 165              		gdtset	name=KERN_CS, slot=4, dpl=0, type=GDT_CODE, base=0, limit=0xffffff, gran=1
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  .set KERN_CS,(4<<3)|0
+ 165              	>  .globl KERN_CS
+ 165 0014 B8000000 	>  movl $0,%eax
+ 165      00
+ 165 0019 BBFFFFFF 	>  movl $0xffffff,%ebx
+ 165      00
+ 165              	> 
+ 165 001e 89C2     	>  mov %eax,%edx
+ 165 0020 C1E010   	>  shl $16,%eax
+ 165 0023 6689D8   	>  mov %bx,%ax
+ 165 0026 A3A01000 	>  movl %eax,gdt+(8*4)
+ 165      00
+ 165              	> 
+ 165 002b C1EA10   	>  shr $16,%edx
+ 165 002e 89D1     	>  mov %edx,%ecx
+ 165 0030 81E1FF00 	>  andl $0xff,%ecx
+GAS LISTING init.s 			page 5
+
+
+ 165      0000
+ 165 0036 31CA     	>  xorl %ecx,%edx
+ 165 0038 C1E210   	>  shl $16,%edx
+ 165 003b 09CA     	>  orl %ecx,%edx
+ 165 003d 81E30000 	>  andl $0xf0000,%ebx
+ 165      0F00
+ 165 0043 09DA     	>  orl %ebx,%edx
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165              	>  
+ 165 0045 81CA009B 	>  orl $(((1<<15)|0x4080|(0<<5)|GDT_CODE)<<8),%edx
+ 165      C000
+ 165 004b 8915A410 	>  movl %edx,gdt+(4+8*4)
+ 165      0000
+ 166              	
+ 167              		# Kernel data segment:
+ 168              		gdtset	name=KERN_DS, slot=5, dpl=0, type=GDT_DATA, base=0, limit=0xffffff, gran=1
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  .set KERN_DS,(5<<3)|0
+ 168              	>  .globl KERN_DS
+ 168 0051 B8000000 	>  movl $0,%eax
+ 168      00
+ 168 0056 BBFFFFFF 	>  movl $0xffffff,%ebx
+ 168      00
+ 168              	> 
+ 168 005b 89C2     	>  mov %eax,%edx
+ 168 005d C1E010   	>  shl $16,%eax
+ 168 0060 6689D8   	>  mov %bx,%ax
+ 168 0063 A3A81000 	>  movl %eax,gdt+(8*5)
+GAS LISTING init.s 			page 6
+
+
+ 168      00
+ 168              	> 
+ 168 0068 C1EA10   	>  shr $16,%edx
+ 168 006b 89D1     	>  mov %edx,%ecx
+ 168 006d 81E1FF00 	>  andl $0xff,%ecx
+ 168      0000
+ 168 0073 31CA     	>  xorl %ecx,%edx
+ 168 0075 C1E210   	>  shl $16,%edx
+ 168 0078 09CA     	>  orl %ecx,%edx
+ 168 007a 81E30000 	>  andl $0xf0000,%ebx
+ 168      0F00
+ 168 0080 09DA     	>  orl %ebx,%edx
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168              	>  
+ 168 0082 81CA0093 	>  orl $(((1<<15)|0x4080|(0<<5)|GDT_DATA)<<8),%edx
+ 168      C000
+ 168 0088 8915AC10 	>  movl %edx,gdt+(4+8*5)
+ 168      0000
+ 169              	
+ 170              		# User code segment
+ 171              		gdtset	name=USER_CS, slot=6, dpl=3, type=GDT_CODE, base=0, limit=0xffffff, gran=1
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  .set USER_CS,(6<<3)|3
+ 171              	>  .globl USER_CS
+ 171 008e B8000000 	>  movl $0,%eax
+ 171      00
+ 171 0093 BBFFFFFF 	>  movl $0xffffff,%ebx
+ 171      00
+GAS LISTING init.s 			page 7
+
+
+ 171              	> 
+ 171 0098 89C2     	>  mov %eax,%edx
+ 171 009a C1E010   	>  shl $16,%eax
+ 171 009d 6689D8   	>  mov %bx,%ax
+ 171 00a0 A3B01000 	>  movl %eax,gdt+(8*6)
+ 171      00
+ 171              	> 
+ 171 00a5 C1EA10   	>  shr $16,%edx
+ 171 00a8 89D1     	>  mov %edx,%ecx
+ 171 00aa 81E1FF00 	>  andl $0xff,%ecx
+ 171      0000
+ 171 00b0 31CA     	>  xorl %ecx,%edx
+ 171 00b2 C1E210   	>  shl $16,%edx
+ 171 00b5 09CA     	>  orl %ecx,%edx
+ 171 00b7 81E30000 	>  andl $0xf0000,%ebx
+ 171      0F00
+ 171 00bd 09DA     	>  orl %ebx,%edx
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171              	>  
+ 171 00bf 81CA00FB 	>  orl $(((1<<15)|0x4080|(3<<5)|GDT_CODE)<<8),%edx
+ 171      C000
+ 171 00c5 8915B410 	>  movl %edx,gdt+(4+8*6)
+ 171      0000
+ 172              	
+ 173              		# User data segment
+ 174              		gdtset	name=USER_DS, slot=7, dpl=3, type=GDT_DATA, base=0, limit=0xffffff, gran=1
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  .set USER_DS,(7<<3)|3
+GAS LISTING init.s 			page 8
+
+
+ 174              	>  .globl USER_DS
+ 174 00cb B8000000 	>  movl $0,%eax
+ 174      00
+ 174 00d0 BBFFFFFF 	>  movl $0xffffff,%ebx
+ 174      00
+ 174              	> 
+ 174 00d5 89C2     	>  mov %eax,%edx
+ 174 00d7 C1E010   	>  shl $16,%eax
+ 174 00da 6689D8   	>  mov %bx,%ax
+ 174 00dd A3B81000 	>  movl %eax,gdt+(8*7)
+ 174      00
+ 174              	> 
+ 174 00e2 C1EA10   	>  shr $16,%edx
+ 174 00e5 89D1     	>  mov %edx,%ecx
+ 174 00e7 81E1FF00 	>  andl $0xff,%ecx
+ 174      0000
+ 174 00ed 31CA     	>  xorl %ecx,%edx
+ 174 00ef C1E210   	>  shl $16,%edx
+ 174 00f2 09CA     	>  orl %ecx,%edx
+ 174 00f4 81E30000 	>  andl $0xf0000,%ebx
+ 174      0F00
+ 174 00fa 09DA     	>  orl %ebx,%edx
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174              	>  
+ 174 00fc 81CA00F3 	>  orl $(((1<<15)|0x4080|(3<<5)|GDT_DATA)<<8),%edx
+ 174      C000
+ 174 0102 8915BC10 	>  movl %edx,gdt+(4+8*7)
+ 174      0000
+ 175              	
+ 176              		# TSS
+ 177              		gdtset	name=TSS, slot=3, dpl=0, type=GDT_TSS32, base=tss, limit=tss_len-1, gran=0
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+GAS LISTING init.s 			page 9
+
+
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  .set TSS,(3<<3)|0
+ 177              	>  .globl TSS
+ 177 0108 B8001000 	>  movl $tss,%eax
+ 177      00
+ 177 010d BB670000 	>  movl $tss_len-1,%ebx
+ 177      00
+ 177              	> 
+ 177 0112 89C2     	>  mov %eax,%edx
+ 177 0114 C1E010   	>  shl $16,%eax
+ 177 0117 6689D8   	>  mov %bx,%ax
+ 177 011a A3981000 	>  movl %eax,gdt+(8*3)
+ 177      00
+ 177              	> 
+ 177 011f C1EA10   	>  shr $16,%edx
+ 177 0122 89D1     	>  mov %edx,%ecx
+ 177 0124 81E1FF00 	>  andl $0xff,%ecx
+ 177      0000
+ 177 012a 31CA     	>  xorl %ecx,%edx
+ 177 012c C1E210   	>  shl $16,%edx
+ 177 012f 09CA     	>  orl %ecx,%edx
+ 177 0131 81E30000 	>  andl $0xf0000,%ebx
+ 177      0F00
+ 177 0137 09DA     	>  orl %ebx,%edx
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177              	>  
+ 177 0139 81CA0089 	>  orl $(((0<<15)|0x4080|(0<<5)|GDT_TSS32)<<8),%edx
+ 177      4000
+ 177 013f 89159C10 	>  movl %edx,gdt+(4+8*3)
+ 177      0000
+ 178              	
+ 179 0145 0F0115C0 		lgdt	gdtptr
+ 179      100000
+ 180 014c EA530100 		ljmp	$KERN_CS, $1f		# load code segment
+ 180      002000
+ 181              	1:
+ 182 0153 66B82800 		mov	$KERN_DS, %ax		# load data segments
+ 183 0157 8ED8     		mov 	%ax, %ds
+ 184 0159 8EC0     		mov 	%ax, %es
+ 185 015b 8ED0     		mov 	%ax, %ss
+ 186 015d 8EE8     		mov	%ax, %gs
+ 187 015f 8EE0     		mov 	%ax, %fs
+ 188 0161 66B81800 		mov	$TSS, %ax		# load task register
+ 189 0165 0F00D8   		ltr	%ax
+ 190 0168 C3       		ret
+ 191              	
+ 192              	#-- Done ---------------------------------------------------------------------
+GAS LISTING init.s 			page 10
+
+
+DEFINED SYMBOLS
+              init.s:10     *ABS*:0000000000000000 RESERVED
+              init.s:18     .data:0000000000001000 stack
+              init.s:26     .text:0000000000000000 entry
+              init.s:164    .text:0000000000000014 initGDT
+              init.s:44     .data:0000000000001000 tss
+              init.s:45     .data:0000000000001004 esp0
+                            *ABS*:0000000000000028 KERN_DS
+              init.s:69     *ABS*:0000000000000068 tss_len
+              init.s:92     *ABS*:0000000000000008 GDT_ENTRIES
+              init.s:93     *ABS*:0000000000000040 GDT_SIZE
+              init.s:98     .data:0000000000001080 gdt
+              init.s:101    .data:00000000000010c0 gdtptr
+              init.s:104    *ABS*:0000000000000013 GDT_DATA
+              init.s:105    *ABS*:000000000000001b GDT_CODE
+              init.s:106    *ABS*:0000000000000009 GDT_TSS32
+              init.s:165    *ABS*:0000000000000020 KERN_CS
+              init.s:171    *ABS*:0000000000000033 USER_CS
+              init.s:174    *ABS*:000000000000003b USER_DS
+              init.s:177    *ABS*:0000000000000018 TSS
+
+UNDEFINED SYMBOLS
+kernel

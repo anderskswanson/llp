@@ -1,0 +1,1787 @@
+GAS LISTING init.s 			page 1
+
+
+   1              	#
+   2              	-------------------------------------------------------------------------
+   3              	# init.s:  Initialize simple kernel with a GDT and an IDT
+   4              	#
+   5              	# Mark P. Jones, April 2006, 2016
+   6              	
+   7              	#--------------------------------------------------------------------------
+   8              	# General definitions:
+   9              	#--------------------------------------------------------------------------
+  10              	
+  11              		.set	RESERVED, 0	# Used to mark a reserved field
+  12              	
+  13              	#--------------------------------------------------------------------------
+  14              	# Initial stack:
+  15              	#--------------------------------------------------------------------------
+  16              	
+  17              		.data
+  18 ???? 00000000 		.space	4096		# Kernel stack
+  18      00000000 
+  18      00000000 
+  18      00000000 
+  18      00000000 
+  19              	stack:
+  20              	
+  21              	#--------------------------------------------------------------------------
+  22              	# Entry point:
+  23              	#--------------------------------------------------------------------------
+  24              	
+  25              		.text
+  26              		.globl	entry
+  27 ???? FA       	entry:	cli			# Turn off interrupts
+  28 ???? 8D250010 		leal	stack, %esp	# Set up initial kernel stack
+  28      0000
+  29              	
+  30 ???? E80D0000 		call	initGDT		# Set up global segment table
+  30      00
+  31 ???? E85D0100 		call	initIDT		# Set up interrupt descriptor table
+  31      00
+  32 ???? E8FCFFFF 		call	kernel		# Enter main kernel
+  32      FF
+  33              	
+  34 ???? F4       	1:	hlt			# Catch all, in case kernel returns
+  35 ???? EBFD     		jmp	1b
+  36              	
+  37              	#--------------------------------------------------------------------------
+  38              	# Task-state Segment (TSS):
+  39              	#
+  40              	# We provide only a single Task-State Segment (TSS); we want to support
+  41              	# lighter-weight task switching than is provided by the hardware.  But
+  42              	# we still need a tss to store the kernel stack pointer and segment.
+  43              	#--------------------------------------------------------------------------
+  44              	
+  45              		.data
+  46 ???? 00000000 	tss:	.short	0, RESERVED		# previous task link
+  47 ???? 00000000 	esp0:	.long	0			# esp0
+  48 ???? 00000000 		.short	KERN_DS, RESERVED	# ss0
+  49 ???? 00000000 		.long	0			# esp1
+GAS LISTING init.s 			page 2
+
+
+  50 ???? 00000000 		.short	0, RESERVED		# ss1
+  51 ???? 00000000 		.long	0			# esp2
+  52 ???? 00000000 		.short	0, RESERVED		# ss2
+  53 ???? 00000000 		.long	0, 0, 0			# cr3 (pdbr), eip, eflags
+  53      00000000 
+  53      00000000 
+  54 ???? 00000000 		.long	0, 0, 0, 0, 0		# eax, ecx, edx, ebx, esp
+  54      00000000 
+  54      00000000 
+  54      00000000 
+  54      00000000 
+  55 ???? 00000000 		.long	0, 0, 0			# ebp, esi, edi
+  55      00000000 
+  55      00000000 
+  56 ???? 00000000 		.short	0, RESERVED		# es
+  57 ???? 00000000 		.short	0, RESERVED		# cs
+  58 ???? 00000000 		.short	0, RESERVED		# ss
+  59 ???? 00000000 		.short	0, RESERVED		# ds
+  60 ???? 00000000 		.short	0, RESERVED		# fs
+  61 ???? 00000000 		.short	0, RESERVED		# gs
+  62 ???? 00000000 		.short	0, RESERVED		# ldt segment selector
+  63 ???? 0000     		.short	0			# T bit
+  64              		#
+  65              		# For now, we set the I/O bitmap offset to a value beyond the limit
+  66              		# of the tss; following Intel documentation, this means that there
+  67              		# is no I/O permissions bitmap and all I/O instructions will
+  68              		# generate exceptions when CPL > IOPL.
+  69              		#
+  70 ???? E803     		.short	1000			# I/O bit map base address
+  71              		.set	tss_len, .-tss
+  72              	
+  73              	#--------------------------------------------------------------------------
+  74              	# Initialize gdt:
+  75              	#
+  76              	# There are eight entries in our GDT:
+  77              	#   0  null		; null entry required by Intel architecture
+  78              	#   1  reserved
+  79              	#   2  reserved
+  80              	#   3  tss
+  81              	#   4  kernel code	; kernel segments
+  82              	#   5  kernel data
+  83              	#   6  user code	; user segments
+  84              	#   7  user data
+  85              	# For the purposes of caching, we will start the GDT at a 128 byte aligned
+  86              	# address; older processors have 32 byte cache lines while newer ones have
+  87              	# 128 bytes per cache line.  The inclusion of a reserved entry (1) in the
+  88              	# GDT ensures that the four {kernel,user}{code,data} segments all fit in a
+  89              	# single cache line, even on older machines.  (I got this idea after reading
+  90              	# the O'Reilly book on the Linux Kernel, but I have no idea if it makes
+  91              	# a significant difference in practice ...)
+  92              	#--------------------------------------------------------------------------
+  93              	
+  94              		.set	GDT_ENTRIES, 8
+  95              		.set	GDT_SIZE, 8*GDT_ENTRIES	# 8 bytes for each descriptor
+  96              	
+  97              		.data
+  98 ???? 00000000 		.align  128
+GAS LISTING init.s 			page 3
+
+
+  98      00000000 
+  98      00000000 
+  98      00000000 
+  98      00000000 
+  99              	#	.globl	gdt			# retain for debugging
+ 100 ???? 00000000 	gdt:	.space	GDT_SIZE, 0
+ 100      00000000 
+ 100      00000000 
+ 100      00000000 
+ 100      00000000 
+ 101              	
+ 102              		.align	8
+ 103 ???? 3F00     	gdtptr:	.short	GDT_SIZE-1
+ 104 ???? 80100000 		.long	gdt
+ 105              	
+ 106              		.set	GDT_DATA,  0x13		# descriptor type for data segment
+ 107              		.set	GDT_CODE,  0x1b		# descriptor type for code segment
+ 108              		.set	GDT_TSS32, 0x09		# descriptor type for 32-bit tss
+ 109              	
+ 110              		.text
+ 111              		.macro	gdtset name, slot, base, limit, gran, dpl, type
+ 112              		#
+ 113              		# This macro calculates a GDT segment descriptor from a specified
+ 114              		# base address (32 bits), limit (20 bits), granularity (1 bit),
+ 115              		# dpl (2 bits) and type (5 bits).  The descriptor is a 64 bit
+ 116              		# quantity that is calculated in the register pair edx:eax and
+ 117              		# also stored in the specified slot of the gdt.  The ebx and ecx
+ 118              		# registers are also overwritten in the process.
+ 119              		#
+ 120              		# The format of a segment descriptor requires us to chop up the
+ 121              		# base and limit values with bit twiddling manipulations that
+ 122              		# cannot, in general, be performed at assembly time.  (The
+ 123              		# base address, in particular, may be a relocatable symbol.)
+ 124              		# The following macro makes it easier for us to perform the
+ 125              		# necessary calculations for each segment at runtime.
+ 126              		#
+ 127              		# gran = 0 => limit is last valid byte offset in segment
+ 128              		# gran = 1 => limit is last valid page offset in segment
+ 129              		#
+ 130              		# type = 0x13 (GDT_DATA)  => data segment
+ 131              		# type = 0x1b (GDT_CODE)  => code segment
+ 132              		# type = 0x09 (GDT_TSS32) => 32 bit tss system descriptor
+ 133              		#
+ 134              		# The following comments use # for concatenation of bitdata
+ 135              		#
+ 136              		.set	\name, (\slot<<3)|\dpl
+ 137              		.globl	\name
+ 138              		movl	$\base, %eax	# eax = bhi # bmd # blo
+ 139              		movl	$\limit, %ebx	# ebx = ~ # lhi # llo
+ 140              	
+ 141              		mov	%eax, %edx	# edx = base
+ 142              		shl	$16, %eax	# eax = blo # 0
+ 143              		mov	%bx, %ax	# eax = blo # llo
+ 144              		movl	%eax, gdt+(8*\slot)
+ 145              	
+ 146              		shr	$16, %edx	# edx = 0 # bhi # bmd
+ 147              		mov	%edx, %ecx	# ecx = 0 # bhi # bmd
+GAS LISTING init.s 			page 4
+
+
+ 148              		andl	$0xff, %ecx	# ecx = 0 # 0   # bmd
+ 149              		xorl	%ecx, %edx	# edx = 0 # bhi # bmd
+ 150              		shl	$16,%edx	# edx = bhi # 0
+ 151              		orl	%ecx, %edx	# edx = bhi # 0 # bmd
+ 152              		andl	$0xf0000, %ebx	# ebx = 0 # lhi # 0
+ 153              		orl	%ebx, %edx	# edx = bhi # 0 # lhi # 0 # bmd
+ 154              		#
+ 155              		# The constant 0x4080 used below is a combination of:
+ 156              		#  0x4000     sets the D/B bit to indicate a 32-bit segment
+ 157              		#  0x0080     sets the P bit to indicate that descriptor is present
+ 158              		# (\gran<<15) puts the granularity bit into place
+ 159              		# (\dpl<<5)   puts the protection level into place
+ 160              		# \type       is the 5 bit type, including the S bit as its MSB
+ 161              		#
+ 162              		orl	$(((\gran<<15) | 0x4080 | (\dpl<<5) | \type)<<8), %edx
+ 163              		movl	%edx, gdt + (4 + 8*\slot)
+ 164              		.endm
+ 165              	
+ 166              	initGDT:# Kernel code segment:
+ 167              		gdtset	name=KERN_CS, slot=4, dpl=0, type=GDT_CODE, base=0, limit=0xffffff, gran=1
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  .set KERN_CS,(4<<3)|0
+ 167              	>  .globl KERN_CS
+ 167 ???? B8000000 	>  movl $0,%eax
+ 167      00
+ 167 ???? BBFFFFFF 	>  movl $0xffffff,%ebx
+ 167      00
+ 167              	> 
+ 167 ???? 89C2     	>  mov %eax,%edx
+ 167 ???? C1E010   	>  shl $16,%eax
+ 167 ???? 6689D8   	>  mov %bx,%ax
+ 167 ???? A3A01000 	>  movl %eax,gdt+(8*4)
+ 167      00
+ 167              	> 
+GAS LISTING init.s 			page 5
+
+
+ 167 ???? C1EA10   	>  shr $16,%edx
+ 167 ???? 89D1     	>  mov %edx,%ecx
+ 167 ???? 81E1FF00 	>  andl $0xff,%ecx
+ 167      0000
+ 167 ???? 31CA     	>  xorl %ecx,%edx
+ 167 ???? C1E210   	>  shl $16,%edx
+ 167 ???? 09CA     	>  orl %ecx,%edx
+ 167 ???? 81E30000 	>  andl $0xf0000,%ebx
+ 167      0F00
+ 167 ???? 09DA     	>  orl %ebx,%edx
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167              	>  
+ 167 ???? 81CA009B 	>  orl $(((1<<15)|0x4080|(0<<5)|GDT_CODE)<<8),%edx
+ 167      C000
+ 167 ???? 8915A410 	>  movl %edx,gdt+(4+8*4)
+ 167      0000
+ 168              	
+ 169              		# Kernel data segment:
+ 170              		gdtset	name=KERN_DS, slot=5, dpl=0, type=GDT_DATA, base=0, limit=0xffffff, gran=1
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  .set KERN_DS,(5<<3)|0
+ 170              	>  .globl KERN_DS
+ 170 ???? B8000000 	>  movl $0,%eax
+ 170      00
+ 170 ???? BBFFFFFF 	>  movl $0xffffff,%ebx
+ 170      00
+ 170              	> 
+ 170 ???? 89C2     	>  mov %eax,%edx
+GAS LISTING init.s 			page 6
+
+
+ 170 ???? C1E010   	>  shl $16,%eax
+ 170 ???? 6689D8   	>  mov %bx,%ax
+ 170 ???? A3A81000 	>  movl %eax,gdt+(8*5)
+ 170      00
+ 170              	> 
+ 170 ???? C1EA10   	>  shr $16,%edx
+ 170 ???? 89D1     	>  mov %edx,%ecx
+ 170 ???? 81E1FF00 	>  andl $0xff,%ecx
+ 170      0000
+ 170 ???? 31CA     	>  xorl %ecx,%edx
+ 170 ???? C1E210   	>  shl $16,%edx
+ 170 ???? 09CA     	>  orl %ecx,%edx
+ 170 ???? 81E30000 	>  andl $0xf0000,%ebx
+ 170      0F00
+ 170 ???? 09DA     	>  orl %ebx,%edx
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170              	>  
+ 170 ???? 81CA0093 	>  orl $(((1<<15)|0x4080|(0<<5)|GDT_DATA)<<8),%edx
+ 170      C000
+ 170 ???? 8915AC10 	>  movl %edx,gdt+(4+8*5)
+ 170      0000
+ 171              	
+ 172              		# User code segment
+ 173              		gdtset	name=USER_CS, slot=6, dpl=3, type=GDT_CODE, base=0, limit=0xffffff, gran=1
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  .set USER_CS,(6<<3)|3
+ 173              	>  .globl USER_CS
+ 173 ???? B8000000 	>  movl $0,%eax
+GAS LISTING init.s 			page 7
+
+
+ 173      00
+ 173 ???? BBFFFFFF 	>  movl $0xffffff,%ebx
+ 173      00
+ 173              	> 
+ 173 ???? 89C2     	>  mov %eax,%edx
+ 173 ???? C1E010   	>  shl $16,%eax
+ 173 ???? 6689D8   	>  mov %bx,%ax
+ 173 ???? A3B01000 	>  movl %eax,gdt+(8*6)
+ 173      00
+ 173              	> 
+ 173 ???? C1EA10   	>  shr $16,%edx
+ 173 ???? 89D1     	>  mov %edx,%ecx
+ 173 ???? 81E1FF00 	>  andl $0xff,%ecx
+ 173      0000
+ 173 ???? 31CA     	>  xorl %ecx,%edx
+ 173 ???? C1E210   	>  shl $16,%edx
+ 173 ???? 09CA     	>  orl %ecx,%edx
+ 173 ???? 81E30000 	>  andl $0xf0000,%ebx
+ 173      0F00
+ 173 ???? 09DA     	>  orl %ebx,%edx
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173              	>  
+ 173 ???? 81CA00FB 	>  orl $(((1<<15)|0x4080|(3<<5)|GDT_CODE)<<8),%edx
+ 173      C000
+ 173 ???? 8915B410 	>  movl %edx,gdt+(4+8*6)
+ 173      0000
+ 174              	
+ 175              		# User data segment
+ 176              		gdtset	name=USER_DS, slot=7, dpl=3, type=GDT_DATA, base=0, limit=0xffffff, gran=1
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+GAS LISTING init.s 			page 8
+
+
+ 176              	>  
+ 176              	>  
+ 176              	>  .set USER_DS,(7<<3)|3
+ 176              	>  .globl USER_DS
+ 176 ???? B8000000 	>  movl $0,%eax
+ 176      00
+ 176 ???? BBFFFFFF 	>  movl $0xffffff,%ebx
+ 176      00
+ 176              	> 
+ 176 ???? 89C2     	>  mov %eax,%edx
+ 176 ???? C1E010   	>  shl $16,%eax
+ 176 ???? 6689D8   	>  mov %bx,%ax
+ 176 ???? A3B81000 	>  movl %eax,gdt+(8*7)
+ 176      00
+ 176              	> 
+ 176 ???? C1EA10   	>  shr $16,%edx
+ 176 ???? 89D1     	>  mov %edx,%ecx
+ 176 ???? 81E1FF00 	>  andl $0xff,%ecx
+ 176      0000
+ 176 ???? 31CA     	>  xorl %ecx,%edx
+ 176 ???? C1E210   	>  shl $16,%edx
+ 176 ???? 09CA     	>  orl %ecx,%edx
+ 176 ???? 81E30000 	>  andl $0xf0000,%ebx
+ 176      0F00
+ 176 ???? 09DA     	>  orl %ebx,%edx
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176              	>  
+ 176 ???? 81CA00F3 	>  orl $(((1<<15)|0x4080|(3<<5)|GDT_DATA)<<8),%edx
+ 176      C000
+ 176 ???? 8915BC10 	>  movl %edx,gdt+(4+8*7)
+ 176      0000
+ 177              	
+ 178              		# TSS
+ 179              		gdtset	name=TSS, slot=3, dpl=0, type=GDT_TSS32, base=tss, limit=tss_len-1, gran=0
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+GAS LISTING init.s 			page 9
+
+
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  .set TSS,(3<<3)|0
+ 179              	>  .globl TSS
+ 179 ???? B8001000 	>  movl $tss,%eax
+ 179      00
+ 179 ???? BB670000 	>  movl $tss_len-1,%ebx
+ 179      00
+ 179              	> 
+ 179 ???? 89C2     	>  mov %eax,%edx
+ 179 ???? C1E010   	>  shl $16,%eax
+ 179 ???? 6689D8   	>  mov %bx,%ax
+ 179 ???? A3981000 	>  movl %eax,gdt+(8*3)
+ 179      00
+ 179              	> 
+ 179 ???? C1EA10   	>  shr $16,%edx
+ 179 ???? 89D1     	>  mov %edx,%ecx
+ 179 ???? 81E1FF00 	>  andl $0xff,%ecx
+ 179      0000
+ 179 ???? 31CA     	>  xorl %ecx,%edx
+ 179 ???? C1E210   	>  shl $16,%edx
+ 179 ???? 09CA     	>  orl %ecx,%edx
+ 179 ???? 81E30000 	>  andl $0xf0000,%ebx
+ 179      0F00
+ 179 ???? 09DA     	>  orl %ebx,%edx
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179              	>  
+ 179 ???? 81CA0089 	>  orl $(((0<<15)|0x4080|(0<<5)|GDT_TSS32)<<8),%edx
+ 179      4000
+ 179 ???? 89159C10 	>  movl %edx,gdt+(4+8*3)
+ 179      0000
+ 180              	
+ 181 ???? 0F0115C0 		lgdt	gdtptr
+ 181      100000
+ 182 ???? EA580100 		ljmp	$KERN_CS, $1f		# load code segment
+ 182      002000
+ 183              	1:
+ 184 ???? 66B82800 		mov	$KERN_DS, %ax		# load data segments
+ 185 ???? 8ED8     		mov 	%ax, %ds
+ 186 ???? 8EC0     		mov 	%ax, %es
+ 187 ???? 8ED0     		mov 	%ax, %ss
+ 188 ???? 8EE8     		mov	%ax, %gs
+ 189 ???? 8EE0     		mov 	%ax, %fs
+ 190 ???? 66B81800 		mov	$TSS, %ax		# load task register
+ 191 ???? 0F00D8   		ltr	%ax
+ 192 ???? C3       		ret
+GAS LISTING init.s 			page 10
+
+
+ 193              	
+ 194              	#--------------------------------------------------------------------------
+ 195              	# IDT:
+ 196              	#--------------------------------------------------------------------------
+ 197              	
+ 198              		.set	IDT_ENTRIES, 256	# Allow for all possible interrupts
+ 199              		.set	IDT_SIZE, 8*IDT_ENTRIES	# Eight bytes for each idt descriptor
+ 200              		.set	IDT_INTR, 0x000		# Type for interrupt gate
+ 201              		.set	IDT_TRAP, 0x100		# Type for trap gate
+ 202              	
+ 203              		.data
+ 204 ???? 0000     		.align	8
+ 205 ???? FF07     	idtptr:	.short	IDT_SIZE-1
+ 206 ???? D0100000 		.long	idt
+ 207 ???? 0000     		.align  8
+ 208 ???? 00000000 	idt:	.space	IDT_SIZE, 0		# zero initial entries
+ 208      00000000 
+ 208      00000000 
+ 208      00000000 
+ 208      00000000 
+ 209              	
+ 210              		.text
+ 211              		.macro	idtcalc	handler, slot, dpl=0, type=IDT_INTR, seg=KERN_CS
+ 212              		#
+ 213              		# This macro calculates an IDT segment descriptor from a specified
+ 214              		# segment (16 bits), handler address (32 bits), dpl (2 bits) and
+ 215              		# type (5 bits).  The descriptor is a 64 bit # quantity that is
+ 216              		# calculated in the register pair edx:eax and then stored in the
+ 217              		# specified slot of the IDT.
+ 218              		#
+ 219              		# type = 0x000 (IDT_INTR)  => interrupt gate
+ 220              		# type = 0x100 (IDT_TRAP)  => trap gate
+ 221              		#
+ 222              		# The following comments use # for concatenation of bitdata
+ 223              		#
+ 224              		mov	$\seg, %ax		# eax =   ? # seg
+ 225              		shl	$16, %eax		# eax = seg #   0
+ 226              		movl	$\handler, %edx		# edx = hhi # hlo
+ 227              		mov	%dx, %ax		# eax = seg # hlo
+ 228              		mov	$(0x8e00 | (\dpl<<13) | \type), %dx
+ 229              		movl	%eax, idt + (    8*\slot)
+ 230              		movl	%edx, idt + (4 + 8*\slot)
+ 231              		.endm
+ 232              	
+ 233              	initIDT:# Add descriptors for exception & interrupt handlers:
+ 234              		.irp	num, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,16,17,18,19
+ 234              	>  idtcalc exc0,slot=0
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+GAS LISTING init.s 			page 11
+
+
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA100400 	>>  movl $exc0,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3D01000 	>>  movl %eax,idt+( 8*0)
+ 234      00
+ 234 ???? 8915D410 	>>  movl %edx,idt+(4+8*0)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc1,slot=1
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA300400 	>>  movl $exc1,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3D81000 	>>  movl %eax,idt+( 8*1)
+ 234      00
+ 234 ???? 8915DC10 	>>  movl %edx,idt+(4+8*1)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc2,slot=2
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA500400 	>>  movl $exc2,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3E01000 	>>  movl %eax,idt+( 8*2)
+GAS LISTING init.s 			page 12
+
+
+ 234      00
+ 234 ???? 8915E410 	>>  movl %edx,idt+(4+8*2)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc3,slot=3
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA700400 	>>  movl $exc3,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3E81000 	>>  movl %eax,idt+( 8*3)
+ 234      00
+ 234 ???? 8915EC10 	>>  movl %edx,idt+(4+8*3)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc4,slot=4
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA900400 	>>  movl $exc4,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3F01000 	>>  movl %eax,idt+( 8*4)
+ 234      00
+ 234 ???? 8915F410 	>>  movl %edx,idt+(4+8*4)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc5,slot=5
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+GAS LISTING init.s 			page 13
+
+
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BAB00400 	>>  movl $exc5,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3F81000 	>>  movl %eax,idt+( 8*5)
+ 234      00
+ 234 ???? 8915FC10 	>>  movl %edx,idt+(4+8*5)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc6,slot=6
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BAD00400 	>>  movl $exc6,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3001100 	>>  movl %eax,idt+( 8*6)
+ 234      00
+ 234 ???? 89150411 	>>  movl %edx,idt+(4+8*6)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc7,slot=7
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+GAS LISTING init.s 			page 14
+
+
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BAF00400 	>>  movl $exc7,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3081100 	>>  movl %eax,idt+( 8*7)
+ 234      00
+ 234 ???? 89150C11 	>>  movl %edx,idt+(4+8*7)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc8,slot=8
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA100500 	>>  movl $exc8,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3101100 	>>  movl %eax,idt+( 8*8)
+ 234      00
+ 234 ???? 89151411 	>>  movl %edx,idt+(4+8*8)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc9,slot=9
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA300500 	>>  movl $exc9,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3181100 	>>  movl %eax,idt+( 8*9)
+ 234      00
+ 234 ???? 89151C11 	>>  movl %edx,idt+(4+8*9)
+ 234      0000
+GAS LISTING init.s 			page 15
+
+
+ 234              	> 
+ 234              	>  idtcalc exc10,slot=10
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA500500 	>>  movl $exc10,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3201100 	>>  movl %eax,idt+( 8*10)
+ 234      00
+ 234 ???? 89152411 	>>  movl %edx,idt+(4+8*10)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc11,slot=11
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA700500 	>>  movl $exc11,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3281100 	>>  movl %eax,idt+( 8*11)
+ 234      00
+ 234 ???? 89152C11 	>>  movl %edx,idt+(4+8*11)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc12,slot=12
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+GAS LISTING init.s 			page 16
+
+
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA900500 	>>  movl $exc12,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3301100 	>>  movl %eax,idt+( 8*12)
+ 234      00
+ 234 ???? 89153411 	>>  movl %edx,idt+(4+8*12)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc13,slot=13
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BAB00500 	>>  movl $exc13,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3381100 	>>  movl %eax,idt+( 8*13)
+ 234      00
+ 234 ???? 89153C11 	>>  movl %edx,idt+(4+8*13)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc14,slot=14
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BAD00500 	>>  movl $exc14,%edx
+ 234      00
+GAS LISTING init.s 			page 17
+
+
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3401100 	>>  movl %eax,idt+( 8*14)
+ 234      00
+ 234 ???? 89154411 	>>  movl %edx,idt+(4+8*14)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc16,slot=16
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BAF00500 	>>  movl $exc16,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3501100 	>>  movl %eax,idt+( 8*16)
+ 234      00
+ 234 ???? 89155411 	>>  movl %edx,idt+(4+8*16)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc17,slot=17
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA100600 	>>  movl $exc17,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3581100 	>>  movl %eax,idt+( 8*17)
+ 234      00
+ 234 ???? 89155C11 	>>  movl %edx,idt+(4+8*17)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc18,slot=18
+ 234              	>>  
+GAS LISTING init.s 			page 18
+
+
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA300600 	>>  movl $exc18,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3601100 	>>  movl %eax,idt+( 8*18)
+ 234      00
+ 234 ???? 89156411 	>>  movl %edx,idt+(4+8*18)
+ 234      0000
+ 234              	> 
+ 234              	>  idtcalc exc19,slot=19
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234              	>>  
+ 234 ???? 66B82000 	>>  mov $KERN_CS,%ax
+ 234 ???? C1E010   	>>  shl $16,%eax
+ 234 ???? BA500600 	>>  movl $exc19,%edx
+ 234      00
+ 234 ???? 6689D0   	>>  mov %dx,%ax
+ 234 ???? 66BA008E 	>>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 234 ???? A3681100 	>>  movl %eax,idt+( 8*19)
+ 234      00
+ 234 ???? 89156C11 	>>  movl %edx,idt+(4+8*19)
+ 234      0000
+ 235              		idtcalc	exc\num, slot=\num
+ 236              		.endr
+ 237              	
+ 238              		# Add descriptors for hardware irqs:
+ 239              	
+ 240              		# Add descriptors for system calls:
+ 241              	        # These are the only idt entries that we will allow to be called from
+ 242              	        # user mode without generating a general protection fault, so they
+ 243              	        # will be tagged with dpl=3
+ 244              		idtcalc	handler=kputc, slot=0x80, dpl=3
+ 244              	>  
+ 244              	>  
+GAS LISTING init.s 			page 19
+
+
+ 244              	>  
+ 244              	>  
+ 244              	>  
+ 244              	>  
+ 244              	>  
+ 244              	>  
+ 244              	>  
+ 244              	>  
+ 244              	>  
+ 244              	>  
+ 244 ???? 66B82000 	>  mov $KERN_CS,%ax
+ 244 ???? C1E010   	>  shl $16,%eax
+ 244 ???? BAA20600 	>  movl $kputc,%edx
+ 244      00
+ 244 ???? 6689D0   	>  mov %dx,%ax
+ 244 ???? 66BA00EE 	>  mov $(0x8e00|(3<<13)|IDT_INTR),%dx
+ 244 ???? A3D01400 	>  movl %eax,idt+( 8*0x80)
+ 244      00
+ 244 ???? 8915D414 	>  movl %edx,idt+(4+8*0x80)
+ 244      0000
+ 245              	
+ 246              	        idtcalc handler=yield, slot=0x81, dpl=3
+ 246              	>  
+ 246              	>  
+ 246              	>  
+ 246              	>  
+ 246              	>  
+ 246              	>  
+ 246              	>  
+ 246              	>  
+ 246              	>  
+ 246              	>  
+ 246              	>  
+ 246              	>  
+ 246 ???? 66B82000 	>  mov $KERN_CS,%ax
+ 246 ???? C1E010   	>  shl $16,%eax
+ 246 ???? BAB70600 	>  movl $yield,%edx
+ 246      00
+ 246 ???? 6689D0   	>  mov %dx,%ax
+ 246 ???? 66BA00EE 	>  mov $(0x8e00|(3<<13)|IDT_INTR),%dx
+ 246 ???? A3D81400 	>  movl %eax,idt+( 8*0x81)
+ 246      00
+ 246 ???? 8915DC14 	>  movl %edx,idt+(4+8*0x81)
+ 246      0000
+ 247              	
+ 248              		idtcalc handler=timerHandler, slot=0x20, dpl=0
+ 248              	>  
+ 248              	>  
+ 248              	>  
+ 248              	>  
+ 248              	>  
+ 248              	>  
+ 248              	>  
+ 248              	>  
+ 248              	>  
+ 248              	>  
+ 248              	>  
+GAS LISTING init.s 			page 20
+
+
+ 248              	>  
+ 248 ???? 66B82000 	>  mov $KERN_CS,%ax
+ 248 ???? C1E010   	>  shl $16,%eax
+ 248 ???? BACC0600 	>  movl $timerHandler,%edx
+ 248      00
+ 248 ???? 6689D0   	>  mov %dx,%ax
+ 248 ???? 66BA008E 	>  mov $(0x8e00|(0<<13)|IDT_INTR),%dx
+ 248 ???? A3D01100 	>  movl %eax,idt+( 8*0x20)
+ 248      00
+ 248 ???? 8915D411 	>  movl %edx,idt+(4+8*0x20)
+ 248      0000
+ 249              		# Install the new IDT:
+ 250 ???? 0F011DC8 		lidt	idtptr
+ 250      100000
+ 251 ???? C3       		ret
+ 252              	
+ 253              		#---------------------------------------------------------------------
+ 254              		# Exception handlers:
+ 255              	
+ 256              		.text
+ 257              		.macro	handler num, func, errorcode=0
+ 258              		.align	16
+ 259              	exc\num:
+ 260              		.if	\errorcode==0
+ 261              		subl	$4, %esp	# fake an error code if necessary
+ 262              		.endif
+ 263              		push	%gs		# Save segments
+ 264              		push	%fs
+ 265              		push	%es
+ 266              		push	%ds
+ 267              		pusha			# Save registers
+ 268              		push	%esp		# push pointer to frame for handler
+ 269              		movl	$\num, %eax
+ 270              		call	\func
+ 271              		addl	$4, %esp
+ 272              		popl	%es
+ 273              		popl	%ds
+ 274              		popa
+ 275              		addl	$4, %esp	# remove error code
+ 276              		iret
+ 277              		.endm
+ 278              	
+ 279              		# Protected-mode exceptions and interrupts:
+ 280              		#
+ 281              		handler	num=0,  func=nohandler			# divide error
+ 281 ???? 8DB60000 	>  .align 16
+ 281      0000
+ 281              	> exc0:
+ 281              	>  .if 0==0
+ 281 ???? 83EC04   	>  subl $4,%esp
+ 281              	>  .endif
+ 281 ???? 0FA8     	>  push %gs
+ 281 ???? 0FA0     	>  push %fs
+ 281 ???? 06       	>  push %es
+ 281 ???? 1E       	>  push %ds
+ 281 ???? 60       	>  pusha 
+ 281 ???? 54       	>  push %esp
+GAS LISTING init.s 			page 21
+
+
+ 281 ???? B8000000 	>  movl $0,%eax
+ 281      00
+ 281 ???? E84A0200 	>  call nohandler
+ 281      00
+ 281 ???? 83C404   	>  addl $4,%esp
+ 281 ???? 07       	>  popl %es
+ 281 ???? 1F       	>  popl %ds
+ 281 ???? 61       	>  popa
+ 281 ???? 83C404   	>  addl $4,%esp
+ 281 ???? CF       	>  iret
+ 282              		handler	num=1,  func=nohandler			# debug
+ 282 ???? 90       	>  .align 16
+ 282              	> exc1:
+ 282              	>  .if 0==0
+ 282 ???? 83EC04   	>  subl $4,%esp
+ 282              	>  .endif
+ 282 ???? 0FA8     	>  push %gs
+ 282 ???? 0FA0     	>  push %fs
+ 282 ???? 06       	>  push %es
+ 282 ???? 1E       	>  push %ds
+ 282 ???? 60       	>  pusha 
+ 282 ???? 54       	>  push %esp
+ 282 ???? B8010000 	>  movl $1,%eax
+ 282      00
+ 282 ???? E82A0200 	>  call nohandler
+ 282      00
+ 282 ???? 83C404   	>  addl $4,%esp
+ 282 ???? 07       	>  popl %es
+ 282 ???? 1F       	>  popl %ds
+ 282 ???? 61       	>  popa
+ 282 ???? 83C404   	>  addl $4,%esp
+ 282 ???? CF       	>  iret
+ 283              		handler	num=2,  func=nohandler			# NMI
+ 283 ???? 90       	>  .align 16
+ 283              	> exc2:
+ 283              	>  .if 0==0
+ 283 ???? 83EC04   	>  subl $4,%esp
+ 283              	>  .endif
+ 283 ???? 0FA8     	>  push %gs
+ 283 ???? 0FA0     	>  push %fs
+ 283 ???? 06       	>  push %es
+ 283 ???? 1E       	>  push %ds
+ 283 ???? 60       	>  pusha 
+ 283 ???? 54       	>  push %esp
+ 283 ???? B8020000 	>  movl $2,%eax
+ 283      00
+ 283 ???? E80A0200 	>  call nohandler
+ 283      00
+ 283 ???? 83C404   	>  addl $4,%esp
+ 283 ???? 07       	>  popl %es
+ 283 ???? 1F       	>  popl %ds
+ 283 ???? 61       	>  popa
+ 283 ???? 83C404   	>  addl $4,%esp
+ 283 ???? CF       	>  iret
+ 284              		handler	num=3,  func=nohandler			# breakpoint
+ 284 ???? 90       	>  .align 16
+ 284              	> exc3:
+GAS LISTING init.s 			page 22
+
+
+ 284              	>  .if 0==0
+ 284 ???? 83EC04   	>  subl $4,%esp
+ 284              	>  .endif
+ 284 ???? 0FA8     	>  push %gs
+ 284 ???? 0FA0     	>  push %fs
+ 284 ???? 06       	>  push %es
+ 284 ???? 1E       	>  push %ds
+ 284 ???? 60       	>  pusha 
+ 284 ???? 54       	>  push %esp
+ 284 ???? B8030000 	>  movl $3,%eax
+ 284      00
+ 284 ???? E8EA0100 	>  call nohandler
+ 284      00
+ 284 ???? 83C404   	>  addl $4,%esp
+ 284 ???? 07       	>  popl %es
+ 284 ???? 1F       	>  popl %ds
+ 284 ???? 61       	>  popa
+ 284 ???? 83C404   	>  addl $4,%esp
+ 284 ???? CF       	>  iret
+ 285              		handler	num=4,  func=nohandler			# overflow
+ 285 ???? 90       	>  .align 16
+ 285              	> exc4:
+ 285              	>  .if 0==0
+ 285 ???? 83EC04   	>  subl $4,%esp
+ 285              	>  .endif
+ 285 ???? 0FA8     	>  push %gs
+ 285 ???? 0FA0     	>  push %fs
+ 285 ???? 06       	>  push %es
+ 285 ???? 1E       	>  push %ds
+ 285 ???? 60       	>  pusha 
+ 285 ???? 54       	>  push %esp
+ 285 ???? B8040000 	>  movl $4,%eax
+ 285      00
+ 285 ???? E8CA0100 	>  call nohandler
+ 285      00
+ 285 ???? 83C404   	>  addl $4,%esp
+ 285 ???? 07       	>  popl %es
+ 285 ???? 1F       	>  popl %ds
+ 285 ???? 61       	>  popa
+ 285 ???? 83C404   	>  addl $4,%esp
+ 285 ???? CF       	>  iret
+ 286              		handler	num=5,  func=nohandler			# bound
+ 286 ???? 90       	>  .align 16
+ 286              	> exc5:
+ 286              	>  .if 0==0
+ 286 ???? 83EC04   	>  subl $4,%esp
+ 286              	>  .endif
+ 286 ???? 0FA8     	>  push %gs
+ 286 ???? 0FA0     	>  push %fs
+ 286 ???? 06       	>  push %es
+ 286 ???? 1E       	>  push %ds
+ 286 ???? 60       	>  pusha 
+ 286 ???? 54       	>  push %esp
+ 286 ???? B8050000 	>  movl $5,%eax
+ 286      00
+ 286 ???? E8AA0100 	>  call nohandler
+ 286      00
+GAS LISTING init.s 			page 23
+
+
+ 286 ???? 83C404   	>  addl $4,%esp
+ 286 ???? 07       	>  popl %es
+ 286 ???? 1F       	>  popl %ds
+ 286 ???? 61       	>  popa
+ 286 ???? 83C404   	>  addl $4,%esp
+ 286 ???? CF       	>  iret
+ 287              		handler	num=6,  func=nohandler			# undefined opcode
+ 287 ???? 90       	>  .align 16
+ 287              	> exc6:
+ 287              	>  .if 0==0
+ 287 ???? 83EC04   	>  subl $4,%esp
+ 287              	>  .endif
+ 287 ???? 0FA8     	>  push %gs
+ 287 ???? 0FA0     	>  push %fs
+ 287 ???? 06       	>  push %es
+ 287 ???? 1E       	>  push %ds
+ 287 ???? 60       	>  pusha 
+ 287 ???? 54       	>  push %esp
+ 287 ???? B8060000 	>  movl $6,%eax
+ 287      00
+ 287 ???? E88A0100 	>  call nohandler
+ 287      00
+ 287 ???? 83C404   	>  addl $4,%esp
+ 287 ???? 07       	>  popl %es
+ 287 ???? 1F       	>  popl %ds
+ 287 ???? 61       	>  popa
+ 287 ???? 83C404   	>  addl $4,%esp
+ 287 ???? CF       	>  iret
+ 288              		handler	num=7,  func=nohandler			# nomath
+ 288 ???? 90       	>  .align 16
+ 288              	> exc7:
+ 288              	>  .if 0==0
+ 288 ???? 83EC04   	>  subl $4,%esp
+ 288              	>  .endif
+ 288 ???? 0FA8     	>  push %gs
+ 288 ???? 0FA0     	>  push %fs
+ 288 ???? 06       	>  push %es
+ 288 ???? 1E       	>  push %ds
+ 288 ???? 60       	>  pusha 
+ 288 ???? 54       	>  push %esp
+ 288 ???? B8070000 	>  movl $7,%eax
+ 288      00
+ 288 ???? E86A0100 	>  call nohandler
+ 288      00
+ 288 ???? 83C404   	>  addl $4,%esp
+ 288 ???? 07       	>  popl %es
+ 288 ???? 1F       	>  popl %ds
+ 288 ???? 61       	>  popa
+ 288 ???? 83C404   	>  addl $4,%esp
+ 288 ???? CF       	>  iret
+ 289              		handler	num=8,  func=nohandler, errorcode=1	# doublefault
+ 289 ???? 90       	>  .align 16
+ 289              	> exc8:
+ 289              	>  .if 1==0
+ 289              	>  subl $4,%esp
+ 289              	>  .endif
+ 289 ???? 0FA8     	>  push %gs
+GAS LISTING init.s 			page 24
+
+
+ 289 ???? 0FA0     	>  push %fs
+ 289 ???? 06       	>  push %es
+ 289 ???? 1E       	>  push %ds
+ 289 ???? 60       	>  pusha 
+ 289 ???? 54       	>  push %esp
+ 289 ???? B8080000 	>  movl $8,%eax
+ 289      00
+ 289 ???? E84D0100 	>  call nohandler
+ 289      00
+ 289 ???? 83C404   	>  addl $4,%esp
+ 289 ???? 07       	>  popl %es
+ 289 ???? 1F       	>  popl %ds
+ 289 ???? 61       	>  popa
+ 289 ???? 83C404   	>  addl $4,%esp
+ 289 ???? CF       	>  iret
+ 290              		handler num=9,  func=nohandler			# coproc seg overrun
+ 290 ???? 8D742600 	>  .align 16
+ 290              	> exc9:
+ 290              	>  .if 0==0
+ 290 ???? 83EC04   	>  subl $4,%esp
+ 290              	>  .endif
+ 290 ???? 0FA8     	>  push %gs
+ 290 ???? 0FA0     	>  push %fs
+ 290 ???? 06       	>  push %es
+ 290 ???? 1E       	>  push %ds
+ 290 ???? 60       	>  pusha 
+ 290 ???? 54       	>  push %esp
+ 290 ???? B8090000 	>  movl $9,%eax
+ 290      00
+ 290 ???? E82A0100 	>  call nohandler
+ 290      00
+ 290 ???? 83C404   	>  addl $4,%esp
+ 290 ???? 07       	>  popl %es
+ 290 ???? 1F       	>  popl %ds
+ 290 ???? 61       	>  popa
+ 290 ???? 83C404   	>  addl $4,%esp
+ 290 ???? CF       	>  iret
+ 291              		handler num=10, func=nohandler, errorcode=1	# invalid tss
+ 291 ???? 90       	>  .align 16
+ 291              	> exc10:
+ 291              	>  .if 1==0
+ 291              	>  subl $4,%esp
+ 291              	>  .endif
+ 291 ???? 0FA8     	>  push %gs
+ 291 ???? 0FA0     	>  push %fs
+ 291 ???? 06       	>  push %es
+ 291 ???? 1E       	>  push %ds
+ 291 ???? 60       	>  pusha 
+ 291 ???? 54       	>  push %esp
+ 291 ???? B80A0000 	>  movl $10,%eax
+ 291      00
+ 291 ???? E80D0100 	>  call nohandler
+ 291      00
+ 291 ???? 83C404   	>  addl $4,%esp
+ 291 ???? 07       	>  popl %es
+ 291 ???? 1F       	>  popl %ds
+ 291 ???? 61       	>  popa
+GAS LISTING init.s 			page 25
+
+
+ 291 ???? 83C404   	>  addl $4,%esp
+ 291 ???? CF       	>  iret
+ 292              		handler num=11, func=nohandler, errorcode=1	# segment not present
+ 292 ???? 8D742600 	>  .align 16
+ 292              	> exc11:
+ 292              	>  .if 1==0
+ 292              	>  subl $4,%esp
+ 292              	>  .endif
+ 292 ???? 0FA8     	>  push %gs
+ 292 ???? 0FA0     	>  push %fs
+ 292 ???? 06       	>  push %es
+ 292 ???? 1E       	>  push %ds
+ 292 ???? 60       	>  pusha 
+ 292 ???? 54       	>  push %esp
+ 292 ???? B80B0000 	>  movl $11,%eax
+ 292      00
+ 292 ???? E8ED0000 	>  call nohandler
+ 292      00
+ 292 ???? 83C404   	>  addl $4,%esp
+ 292 ???? 07       	>  popl %es
+ 292 ???? 1F       	>  popl %ds
+ 292 ???? 61       	>  popa
+ 292 ???? 83C404   	>  addl $4,%esp
+ 292 ???? CF       	>  iret
+ 293              		handler num=12, func=nohandler, errorcode=1	# stack-segment fault
+ 293 ???? 8D742600 	>  .align 16
+ 293              	> exc12:
+ 293              	>  .if 1==0
+ 293              	>  subl $4,%esp
+ 293              	>  .endif
+ 293 ???? 0FA8     	>  push %gs
+ 293 ???? 0FA0     	>  push %fs
+ 293 ???? 06       	>  push %es
+ 293 ???? 1E       	>  push %ds
+ 293 ???? 60       	>  pusha 
+ 293 ???? 54       	>  push %esp
+ 293 ???? B80C0000 	>  movl $12,%eax
+ 293      00
+ 293 ???? E8CD0000 	>  call nohandler
+ 293      00
+ 293 ???? 83C404   	>  addl $4,%esp
+ 293 ???? 07       	>  popl %es
+ 293 ???? 1F       	>  popl %ds
+ 293 ???? 61       	>  popa
+ 293 ???? 83C404   	>  addl $4,%esp
+ 293 ???? CF       	>  iret
+ 294              		handler num=13, func=nohandler, errorcode=1	# general protection
+ 294 ???? 8D742600 	>  .align 16
+ 294              	> exc13:
+ 294              	>  .if 1==0
+ 294              	>  subl $4,%esp
+ 294              	>  .endif
+ 294 ???? 0FA8     	>  push %gs
+ 294 ???? 0FA0     	>  push %fs
+ 294 ???? 06       	>  push %es
+ 294 ???? 1E       	>  push %ds
+ 294 ???? 60       	>  pusha 
+GAS LISTING init.s 			page 26
+
+
+ 294 ???? 54       	>  push %esp
+ 294 ???? B80D0000 	>  movl $13,%eax
+ 294      00
+ 294 ???? E8AD0000 	>  call nohandler
+ 294      00
+ 294 ???? 83C404   	>  addl $4,%esp
+ 294 ???? 07       	>  popl %es
+ 294 ???? 1F       	>  popl %ds
+ 294 ???? 61       	>  popa
+ 294 ???? 83C404   	>  addl $4,%esp
+ 294 ???? CF       	>  iret
+ 295              		handler num=14, func=nohandler, errorcode=1	# page fault
+ 295 ???? 8D742600 	>  .align 16
+ 295              	> exc14:
+ 295              	>  .if 1==0
+ 295              	>  subl $4,%esp
+ 295              	>  .endif
+ 295 ???? 0FA8     	>  push %gs
+ 295 ???? 0FA0     	>  push %fs
+ 295 ???? 06       	>  push %es
+ 295 ???? 1E       	>  push %ds
+ 295 ???? 60       	>  pusha 
+ 295 ???? 54       	>  push %esp
+ 295 ???? B80E0000 	>  movl $14,%eax
+ 295      00
+ 295 ???? E88D0000 	>  call nohandler
+ 295      00
+ 295 ???? 83C404   	>  addl $4,%esp
+ 295 ???? 07       	>  popl %es
+ 295 ???? 1F       	>  popl %ds
+ 295 ???? 61       	>  popa
+ 295 ???? 83C404   	>  addl $4,%esp
+ 295 ???? CF       	>  iret
+ 296              		handler num=16, func=nohandler			# math fault
+ 296 ???? 8D742600 	>  .align 16
+ 296              	> exc16:
+ 296              	>  .if 0==0
+ 296 ???? 83EC04   	>  subl $4,%esp
+ 296              	>  .endif
+ 296 ???? 0FA8     	>  push %gs
+ 296 ???? 0FA0     	>  push %fs
+ 296 ???? 06       	>  push %es
+ 296 ???? 1E       	>  push %ds
+ 296 ???? 60       	>  pusha 
+ 296 ???? 54       	>  push %esp
+ 296 ???? B8100000 	>  movl $16,%eax
+ 296      00
+ 296 ???? E86A0000 	>  call nohandler
+ 296      00
+ 296 ???? 83C404   	>  addl $4,%esp
+ 296 ???? 07       	>  popl %es
+ 296 ???? 1F       	>  popl %ds
+ 296 ???? 61       	>  popa
+ 296 ???? 83C404   	>  addl $4,%esp
+ 296 ???? CF       	>  iret
+ 297              		handler num=17, func=nohandler, errorcode=1	# alignment check
+ 297 ???? 90       	>  .align 16
+GAS LISTING init.s 			page 27
+
+
+ 297              	> exc17:
+ 297              	>  .if 1==0
+ 297              	>  subl $4,%esp
+ 297              	>  .endif
+ 297 ???? 0FA8     	>  push %gs
+ 297 ???? 0FA0     	>  push %fs
+ 297 ???? 06       	>  push %es
+ 297 ???? 1E       	>  push %ds
+ 297 ???? 60       	>  pusha 
+ 297 ???? 54       	>  push %esp
+ 297 ???? B8110000 	>  movl $17,%eax
+ 297      00
+ 297 ???? E84D0000 	>  call nohandler
+ 297      00
+ 297 ???? 83C404   	>  addl $4,%esp
+ 297 ???? 07       	>  popl %es
+ 297 ???? 1F       	>  popl %ds
+ 297 ???? 61       	>  popa
+ 297 ???? 83C404   	>  addl $4,%esp
+ 297 ???? CF       	>  iret
+ 298              		handler num=18, func=nohandler			# machine check
+ 298 ???? 8D742600 	>  .align 16
+ 298              	> exc18:
+ 298              	>  .if 0==0
+ 298 ???? 83EC04   	>  subl $4,%esp
+ 298              	>  .endif
+ 298 ???? 0FA8     	>  push %gs
+ 298 ???? 0FA0     	>  push %fs
+ 298 ???? 06       	>  push %es
+ 298 ???? 1E       	>  push %ds
+ 298 ???? 60       	>  pusha 
+ 298 ???? 54       	>  push %esp
+ 298 ???? B8120000 	>  movl $18,%eax
+ 298      00
+ 298 ???? E82A0000 	>  call nohandler
+ 298      00
+ 298 ???? 83C404   	>  addl $4,%esp
+ 298 ???? 07       	>  popl %es
+ 298 ???? 1F       	>  popl %ds
+ 298 ???? 61       	>  popa
+ 298 ???? 83C404   	>  addl $4,%esp
+ 298 ???? CF       	>  iret
+ 299              		handler num=19, func=nohandler			# SIMD fp exception
+ 299 ???? 90       	>  .align 16
+ 299              	> exc19:
+ 299              	>  .if 0==0
+ 299 ???? 83EC04   	>  subl $4,%esp
+ 299              	>  .endif
+ 299 ???? 0FA8     	>  push %gs
+ 299 ???? 0FA0     	>  push %fs
+ 299 ???? 06       	>  push %es
+ 299 ???? 1E       	>  push %ds
+ 299 ???? 60       	>  pusha 
+ 299 ???? 54       	>  push %esp
+ 299 ???? B8130000 	>  movl $19,%eax
+ 299      00
+ 299 ???? E80A0000 	>  call nohandler
+GAS LISTING init.s 			page 28
+
+
+ 299      00
+ 299 ???? 83C404   	>  addl $4,%esp
+ 299 ???? 07       	>  popl %es
+ 299 ???? 1F       	>  popl %ds
+ 299 ???? 61       	>  popa
+ 299 ???? 83C404   	>  addl $4,%esp
+ 299 ???? CF       	>  iret
+ 300              	
+ 301              	nohandler:			# dummy interrupt handler
+ 302 ???? 8B5C2404 		movl	4(%esp), %ebx	# get frame pointer
+ 303 ???? 53       		pushl	%ebx
+ 304 ???? 50       		pushl	%eax
+ 305 ???? 68860600 		pushl	$excepted
+ 305      00
+ 306 ???? E8FCFFFF 		call	printf
+ 306      FF
+ 307 ???? 83C40C   		addl	$12, %esp
+ 308              	
+ 309 ???? F4       	1:	hlt
+ 310 ???? EBFD     		jmp 1b
+ 311              	
+ 312 ???? C3       		ret
+ 313              	excepted:
+ 314 ???? 45786365 		.asciz	"Exception 0x%x, frame=0x%x\n"
+ 314      7074696F 
+ 314      6E203078 
+ 314      25782C20 
+ 314      6672616D 
+ 315              	
+ 316              	#--------------------------------------------------------------------------
+ 317              	# Simple system call handler:
+ 318              	#--------------------------------------------------------------------------
+ 319              	
+ 320              		.text
+ 321 ???? 83EC04   	kputc:	subl	$4, %esp	# Fake an error code
+ 322 ???? 0FA8     		push	%gs		# Save segments
+ 323 ???? 0FA0     		push	%fs
+ 324 ???? 06       		push	%es
+ 325 ???? 1E       		push	%ds
+ 326 ???? 60       		pusha			# Save registers
+ 327 ???? 8D250010 		leal	stack, %esp	# Switch to kernel stack
+ 327      0000
+ 328 ???? E9FCFFFF 		jmp	kputc_imp
+ 328      FF
+ 329              	
+ 330 ???? 83EC04   	yield:  subl    $4, %esp        #works similar to kputc
+ 331 ???? 0FA8     	        push    %gs
+ 332 ???? 0FA0     	        push    %fs
+ 333 ???? 06       	        push    %es
+ 334 ???? 1E       	        push    %ds
+ 335 ???? 60       	        pusha
+ 336 ???? 8D250010 	        leal    stack, %esp
+ 336      0000
+ 337 ???? E9FCFFFF 	        jmp     yield_imp       #except for this jump to a c func
+ 337      FF
+ 338              	
+ 339              	timerHandler:                   #copied in from lab notes
+GAS LISTING init.s 			page 29
+
+
+ 340 ???? 83EC04   		sub	$4, %esp
+ 341 ???? 0FA8     		push	%gs
+ 342 ???? 0FA0     		push	%fs
+ 343 ???? 06       		push	%es
+ 344 ???? 1E       		push	%ds
+ 345 ???? 60       		pusha
+ 346 ???? 8D250010 		leal	stack, %esp
+ 346      0000
+ 347 ???? E9FCFFFF 		jmp	timerInterrupt
+ 347      FF
+ 348              	
+ 349              	#--------------------------------------------------------------------------
+ 350              	# Switch to user mode:  Takes a single parameter, which provides the
+ 351              	# initial context for the user process.
+ 352              	#
+ 353              	# Size of context is 4 * (8 + 4 + 6) = 4*18 = 72
+ 354              	# - 8 general registers: edi, esi, ebp, esp, ebx, edx, ecx, eax
+ 355              	# - 4 segment registers: ds, es, fs, gs
+ 356              	# - 6 interrupt frame words: errorcode, eip, cs, eflags, esp, ss
+ 357              	#--------------------------------------------------------------------------
+ 358              	
+ 359              		.set	CONTEXT_SIZE, 72
+ 360              		.globl	switchToUser
+ 361              	switchToUser:
+ 362 ???? 8B442404 		movl	4(%esp), %eax	# Load address of the user context
+ 363 ???? 89C4     		movl	%eax, %esp	# Reset stack to base of user context
+ 364 ???? 83C048   		addl	$CONTEXT_SIZE, %eax
+ 365 ???? A3041000 		movl	%eax, esp0	# Set stack address for kernel reentry
+ 365      00
+ 366 ???? 61       		popa			# Restore registers
+ 367 ???? 1F       		pop	%ds		# Restore segments
+ 368 ???? 07       		pop	%es
+ 369 ???? 0FA1     		pop	%fs
+ 370 ???? 0FA9     		pop	%gs
+ 371 ???? 83C404   		addl	$4, %esp	# Skip error code
+ 372 ???? CF       		iret			# Return from interrupt
+ 373              	
+ 374              	#-- Done ---------------------------------------------------------------------
+GAS LISTING init.s 			page 30
+
+
+DEFINED SYMBOLS
+              init.s:11     *ABS*:0000000000000000 RESERVED
+              init.s:19     .data:0000000000001000 stack
+              init.s:27     .text:0000000000000000 entry
+              init.s:166    .text:0000000000000019 initGDT
+              init.s:233    .text:000000000000016e initIDT
+              init.s:46     .data:0000000000001000 tss
+              init.s:47     .data:0000000000001004 esp0
+                            *ABS*:0000000000000028 KERN_DS
+              init.s:71     *ABS*:0000000000000068 tss_len
+              init.s:94     *ABS*:0000000000000008 GDT_ENTRIES
+              init.s:95     *ABS*:0000000000000040 GDT_SIZE
+              init.s:100    .data:0000000000001080 gdt
+              init.s:103    .data:00000000000010c0 gdtptr
+              init.s:106    *ABS*:0000000000000013 GDT_DATA
+              init.s:107    *ABS*:000000000000001b GDT_CODE
+              init.s:108    *ABS*:0000000000000009 GDT_TSS32
+              init.s:167    *ABS*:0000000000000020 KERN_CS
+              init.s:173    *ABS*:0000000000000033 USER_CS
+              init.s:176    *ABS*:000000000000003b USER_DS
+              init.s:179    *ABS*:0000000000000018 TSS
+              init.s:198    *ABS*:0000000000000100 IDT_ENTRIES
+              init.s:199    *ABS*:0000000000000800 IDT_SIZE
+              init.s:200    *ABS*:0000000000000000 IDT_INTR
+              init.s:201    *ABS*:0000000000000100 IDT_TRAP
+              init.s:205    .data:00000000000010c8 idtptr
+              init.s:208    .data:00000000000010d0 idt
+              init.s:281    .text:0000000000000410 exc0
+              init.s:282    .text:0000000000000430 exc1
+              init.s:283    .text:0000000000000450 exc2
+              init.s:284    .text:0000000000000470 exc3
+              init.s:285    .text:0000000000000490 exc4
+              init.s:286    .text:00000000000004b0 exc5
+              init.s:287    .text:00000000000004d0 exc6
+              init.s:288    .text:00000000000004f0 exc7
+              init.s:289    .text:0000000000000510 exc8
+              init.s:290    .text:0000000000000530 exc9
+              init.s:291    .text:0000000000000550 exc10
+              init.s:292    .text:0000000000000570 exc11
+              init.s:293    .text:0000000000000590 exc12
+              init.s:294    .text:00000000000005b0 exc13
+              init.s:295    .text:00000000000005d0 exc14
+              init.s:296    .text:00000000000005f0 exc16
+              init.s:297    .text:0000000000000610 exc17
+              init.s:298    .text:0000000000000630 exc18
+              init.s:299    .text:0000000000000650 exc19
+              init.s:321    .text:00000000000006a2 kputc
+              init.s:330    .text:00000000000006b7 yield
+              init.s:339    .text:00000000000006cc timerHandler
+              init.s:301    .text:000000000000066f nohandler
+              init.s:313    .text:0000000000000686 excepted
+              init.s:359    *ABS*:0000000000000048 CONTEXT_SIZE
+              init.s:361    .text:00000000000006e1 switchToUser
+
+UNDEFINED SYMBOLS
+kernel
+printf
+GAS LISTING init.s 			page 31
+
+
+kputc_imp
+yield_imp
+timerInterrupt

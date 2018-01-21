@@ -1,0 +1,36 @@
+GAS LISTING userlib.s 			page 1
+
+
+   1              		.text
+   2              		.globl	entry
+   3 0000 8D250010 	entry:	leal	stack, %esp
+   3      0000
+   4 0006 E9FCFFFF 		jmp	cmain
+   4      FF
+   5              	
+   6              		.data
+   7 0000 00000000 		.space	4096		# User stack
+   7      00000000 
+   7      00000000 
+   7      00000000 
+   7      00000000 
+   8              	stack:
+   9              	
+  10              		# System call to print a character in the kernel's window
+  11              		.globl	kputc
+  12 1000 50       	kputc:	pushl	%eax
+  13 1001 8B442408 		mov	8(%esp), %eax
+  14 1005 CD80     		int	$128
+  15 1007 58       		popl	%eax
+  16 1008 C3       		ret
+  17              	
+GAS LISTING userlib.s 			page 2
+
+
+DEFINED SYMBOLS
+           userlib.s:3      .text:0000000000000000 entry
+           userlib.s:8      .data:0000000000001000 stack
+           userlib.s:12     .data:0000000000001000 kputc
+
+UNDEFINED SYMBOLS
+cmain

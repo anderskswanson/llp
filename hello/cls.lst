@@ -1,0 +1,85 @@
+GAS LISTING cls.s 			page 1
+
+
+   1              	
+   2              	
+   3              		.equ	ROWS, 		25		# number of rows
+   4              		.equ	COLS, 		80		# number of columns
+   5              	
+   6              		.equ	CHARBYTES,	2		# total #bytes per char
+   7              		.equ	ROWBYTES,	COLS*CHARBYTES	# total #bytes per row
+   8              		.equ	SCREENBYTES,	ROWS*ROWBYTES	# total #bytes per screen
+   9              	
+  10              		.equ	SPACE,		32		# blank space
+  11              		.equ	NEWLINE,	'\n'		# newline character
+  12              	
+  13              		.equ	DEFAULT_ATTR, 	0x2e		# PSU Green
+  14              	
+  15              		.data
+  16              	
+  17              	        # Reserve space for a video ram frame buffer with
+  18              	        # 25 rows; 80 columns; and one code and one attribute
+  19              	        # byte per character.
+  20              		.globl  video
+  21              		.align	4
+  22 0000 00000000 	video:	.space	SCREENBYTES
+  22      00000000 
+  22      00000000 
+  22      00000000 
+  22      00000000 
+  23              	
+  24              	        # Some variables to hold the current row, column, and
+  25              		# video attribute:
+  26              		.align	4
+  27 0fa0 00000000 	row:	.long	0		# we will only use the least significant
+  28 0fa4 00000000 	col:	.long	0		# bytes of these variables
+  29 0fa8 00000000 	attr:	.long	0
+  30              	
+  31              		.text
+  32              	
+  33              		# Clear the screen, setting all characters to SPACE
+  34              	        # using the DEFAULT_ATTR attribute.
+  35              		.globl	clear
+  36 0000 55       	clear:	pushl	%ebp
+  37 0001 89E5     		movl	%esp, %ebp
+  38              	        
+  39 0003 B8202E00 	        movl    $(DEFAULT_ATTR<<8 | SPACE), %eax
+  39      00
+  40 0008 89C2     	        movl    %eax, %edx
+  41 000a C1E210   	        shl     $16, %edx
+  42 000d 09C2     	        orl     %eax, %edx
+  43 000f B800800B 	        movl    $0xB8000, %eax
+  43      00
+  44 0014 B9E80300 	        movl    $1000, %ecx
+  44      00
+  45 0019 8910     	L1:     movl    %edx, (%eax)
+  46 001b 83C004   	        add     $4, %eax
+  47 001e 49       	        decl    %ecx
+  48 001f 75F8     	        jnz     L1
+  49              	
+  50 0021 89EC     	        movl	%ebp, %esp
+GAS LISTING cls.s 			page 2
+
+
+  51 0023 5D       		popl	%ebp
+  52 0024 C3       	        ret
+GAS LISTING cls.s 			page 3
+
+
+DEFINED SYMBOLS
+               cls.s:3      *ABS*:0000000000000019 ROWS
+               cls.s:4      *ABS*:0000000000000050 COLS
+               cls.s:6      *ABS*:0000000000000002 CHARBYTES
+               cls.s:7      *ABS*:00000000000000a0 ROWBYTES
+               cls.s:8      *ABS*:0000000000000fa0 SCREENBYTES
+               cls.s:10     *ABS*:0000000000000020 SPACE
+               cls.s:11     *ABS*:000000000000000a NEWLINE
+               cls.s:13     *ABS*:000000000000002e DEFAULT_ATTR
+               cls.s:22     .data:0000000000000000 video
+               cls.s:27     .data:0000000000000fa0 row
+               cls.s:28     .data:0000000000000fa4 col
+               cls.s:29     .data:0000000000000fa8 attr
+               cls.s:36     .text:0000000000000000 clear
+               cls.s:45     .text:0000000000000019 L1
+
+NO UNDEFINED SYMBOLS

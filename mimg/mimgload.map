@@ -1,0 +1,104 @@
+Archive member included to satisfy reference by file (symbol)
+
+../simpleio/libio.a(simpleio.o)
+                              mimgload.o (cls)
+../simpleio/libio.a(serial.o)
+                              ../simpleio/libio.a(simpleio.o) (serial_putc)
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+                0x0000000000200000                . = 0x200000
+
+.text           0x0000000000200000     0x1c70
+                0x0000000000200000                _text_start = .
+ *(.multiboot)
+ .multiboot     0x0000000000200000       0x14 bootload.o
+                0x000000000020000c                mbi
+                0x0000000000200010                mbi_magic
+ *(.text)
+ .text          0x0000000000200014       0x1a bootload.o
+                0x0000000000200014                entry
+ .text          0x000000000020002e      0x657 mimgload.o
+                0x000000000020002e                hasMMap
+                0x000000000020007f                mmapAvailable
+                0x00000000002000b0                fitsInMemory
+                0x000000000020010a                copyMMap
+                0x0000000000200198                nextSection
+                0x00000000002001c4                validImage
+                0x0000000000200399                smartcopy
+                0x00000000002003e1                copyStr
+                0x000000000020042b                loadSection
+                0x00000000002004f3                loadImage
+                0x000000000020058d                mimgload
+ .text          0x0000000000200685      0x4a5 ../simpleio/libio.a(simpleio.o)
+                0x0000000000200729                setVideo
+                0x0000000000200733                setWindow
+                0x0000000000200781                setAttr
+                0x000000000020078b                cls
+                0x000000000020080f                putchar
+                0x0000000000200932                puts
+                0x000000000020095f                printf
+ .text          0x0000000000200b2a       0x2b ../simpleio/libio.a(serial.o)
+                0x0000000000200b2a                serial_putc
+                0x0000000000200b55                _text_end = .
+                0x0000000000200b55                _data_start = .
+ *(.rodata)
+ *fill*         0x0000000000200b55        0x3 
+ .rodata        0x0000000000200b58       0xb0 ../simpleio/libio.a(simpleio.o)
+ *(.data)
+ .data          0x0000000000200c08     0x1000 bootload.o
+ *fill*         0x0000000000201c08       0x18 
+ .data          0x0000000000201c20       0x30 mimgload.o
+                0x0000000000201c20                defaultMMap
+ .data          0x0000000000201c50       0x10 ../simpleio/libio.a(simpleio.o)
+ .data          0x0000000000201c60        0x0 ../simpleio/libio.a(serial.o)
+                0x0000000000201c60                _data_end = .
+                0x0000000000201c60                _bss_start = .
+ *(COMMON)
+ *(.bss)
+ .bss           0x0000000000201c60        0x0 bootload.o
+ .bss           0x0000000000201c60        0x0 mimgload.o
+ .bss           0x0000000000201c60       0x10 ../simpleio/libio.a(simpleio.o)
+ .bss           0x0000000000201c70        0x0 ../simpleio/libio.a(serial.o)
+                0x0000000000201c70                _bss_end = .
+LOAD bootload.o
+LOAD mimgload.o
+LOAD ../simpleio/libio.a
+OUTPUT(mimgload elf32-i386)
+
+.rel.dyn        0x0000000000201c70        0x0
+ .rel.text      0x0000000000201c70        0x0 bootload.o
+
+.rodata.str1.4  0x0000000000201c70      0x1c4
+ .rodata.str1.4
+                0x0000000000201c70      0x1c4 mimgload.o
+                                        0x1c2 (size before relaxing)
+
+.rodata.str1.1  0x0000000000201e34       0xf4
+ .rodata.str1.1
+                0x0000000000201e34       0xed mimgload.o
+                                         0xee (size before relaxing)
+ .rodata.str1.1
+                0x0000000000201f21        0x7 ../simpleio/libio.a(simpleio.o)
+
+.eh_frame       0x0000000000201f28      0x478
+ .eh_frame      0x0000000000201f28      0x2e0 mimgload.o
+ .eh_frame      0x0000000000202208      0x198 ../simpleio/libio.a(simpleio.o)
+                                        0x1b0 (size before relaxing)
+
+.comment        0x0000000000000000       0x2d
+ .comment       0x0000000000000000       0x2d mimgload.o
+                                         0x2e (size before relaxing)
+ .comment       0x000000000000002d       0x2e ../simpleio/libio.a(simpleio.o)
+
+.note.GNU-stack
+                0x0000000000000000        0x0
+ .note.GNU-stack
+                0x0000000000000000        0x0 mimgload.o
+ .note.GNU-stack
+                0x0000000000000000        0x0 ../simpleio/libio.a(simpleio.o)
